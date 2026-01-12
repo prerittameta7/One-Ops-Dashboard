@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
+
 interface JobsTableProps {
   jobs: JobData[];
   title?: string;
@@ -18,6 +19,7 @@ interface JobsTableProps {
 export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const PAGE_SIZE = 20;
 
@@ -99,9 +101,9 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
     return bTime - aTime; // newest first
   });
 
-  const totalPages = Math.max(1, Math.ceil(sortedJobs.length / PAGE_SIZE));
-  const startIndex = (page - 1) * PAGE_SIZE;
-  const pagedJobs = sortedJobs.slice(startIndex, startIndex + PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(sortedJobs.length / pageSize));
+  const startIndex = (page - 1) * pageSize;
+  const pagedJobs = sortedJobs.slice(startIndex, startIndex + pageSize);
 
   const isOverrunning = (job: JobData) => {
     const effectiveDuration = getEffectiveDurationSecs(job);
@@ -227,30 +229,48 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
             </TableBody>
           </Table>
         </div>
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-          <span>
-            Showing {pagedJobs.length} of {sortedJobs.length} filtered jobs
-          </span>
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
+            <span className="text-gray-700">Rows per page</span>
+            <select
+              className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              value={pageSize}
+              onChange={(e) => {
+                const nextSize = Number(e.target.value);
+                setPageSize(nextSize);
+                setPage(1);
+              }}
             >
-              ‹ Prev
-            </Button>
-            <span className="text-gray-700">
-              Page {page} of {totalPages}
+              {[10, 20, 50, 100].map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4">
+            <span>
+              Showing {pagedJobs.length} of {sortedJobs.length} filtered jobs
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-            >
-              Next ›
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                ‹ Prev
+              </Button>
+              <span className="text-gray-700">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Next ›
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
