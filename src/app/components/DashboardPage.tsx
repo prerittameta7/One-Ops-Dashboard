@@ -68,6 +68,10 @@ export function DashboardPage({
   const [permanentlyDeletingIncidentKey, setPermanentlyDeletingIncidentKey] = useState<string | null>(null);
   const [incidentView, setIncidentView] = useState<'active' | 'archived'>('active');
   const [confirmAction, setConfirmAction] = useState<{ mode: 'archive' | 'permanent'; incident: Incident } | null>(null);
+  const [activePage, setActivePage] = useState(1);
+  const [archivedPage, setArchivedPage] = useState(1);
+  const [activePageSize, setActivePageSize] = useState(20);
+  const [archivedPageSize, setArchivedPageSize] = useState(20);
 
   const activeIncidents = useMemo(
     () => incidents.filter((incident) => !incident.archivedAt),
@@ -92,6 +96,26 @@ export function DashboardPage({
       : archivedIncidents;
     return list;
   }, [archivedIncidents, domain]);
+
+  // Pagination helpers for incidents
+  const paginate = (items: Incident[], page: number, pageSize: number) => {
+    const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+    const startIndex = (page - 1) * pageSize;
+    return {
+      totalPages,
+      pageItems: items.slice(startIndex, startIndex + pageSize),
+    };
+  };
+
+  const {
+    totalPages: activeTotalPages,
+    pageItems: activePageItems,
+  } = paginate(incidentsForView, activePage, activePageSize);
+
+  const {
+    totalPages: archivedTotalPages,
+    pageItems: archivedPageItems,
+  } = paginate(archivedIncidentsForView, archivedPage, archivedPageSize);
 
   const incidentStatusSummary = useMemo(() => {
     if (!incidentsForView.length) return 'No active incidents';
@@ -339,7 +363,7 @@ export function DashboardPage({
                               </TableCell>
                             </TableRow>
                           ) : (
-                            incidentsForView.map((incident) => (
+                            activePageItems.map((incident) => (
                               <TableRow key={incident.key}>
                                 <TableCell>{incident.domain || '-'}</TableCell>
                                 <TableCell className="font-medium">
@@ -386,6 +410,51 @@ export function DashboardPage({
                         </TableBody>
                       </Table>
                     </div>
+                    {incidentsForView.length > 0 && (
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-700">Rows per page</span>
+                          <select
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            value={activePageSize}
+                            onChange={(e) => {
+                              setActivePageSize(Number(e.target.value));
+                              setActivePage(1);
+                            }}
+                          >
+                            {[10, 20, 50, 100].map((size) => (
+                              <option key={size} value={size}>{size}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span>
+                            Showing {activePageItems.length} of {incidentsForView.length} incidents
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActivePage((p) => Math.max(1, p - 1))}
+                              disabled={activePage === 1}
+                            >
+                              ‹ Prev
+                            </Button>
+                            <span className="text-gray-700">
+                              Page {activePage} of {activeTotalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActivePage((p) => Math.min(activeTotalPages, p + 1))}
+                              disabled={activePage === activeTotalPages}
+                            >
+                              Next ›
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="archived" className="mt-0">
@@ -410,7 +479,7 @@ export function DashboardPage({
                               </TableCell>
                             </TableRow>
                           ) : (
-                            archivedIncidentsForView.map((incident) => (
+                            archivedPageItems.map((incident) => (
                               <TableRow key={incident.key}>
                                 <TableCell>{incident.domain || '-'}</TableCell>
                                 <TableCell className="font-medium">
@@ -455,6 +524,51 @@ export function DashboardPage({
                         </TableBody>
                       </Table>
                     </div>
+                    {archivedIncidentsForView.length > 0 && (
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-700">Rows per page</span>
+                          <select
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            value={archivedPageSize}
+                            onChange={(e) => {
+                              setArchivedPageSize(Number(e.target.value));
+                              setArchivedPage(1);
+                            }}
+                          >
+                            {[10, 20, 50, 100].map((size) => (
+                              <option key={size} value={size}>{size}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span>
+                            Showing {archivedPageItems.length} of {archivedIncidentsForView.length} incidents
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setArchivedPage((p) => Math.max(1, p - 1))}
+                              disabled={archivedPage === 1}
+                            >
+                              ‹ Prev
+                            </Button>
+                            <span className="text-gray-700">
+                              Page {archivedPage} of {archivedTotalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setArchivedPage((p) => Math.min(archivedTotalPages, p + 1))}
+                              disabled={archivedPage === archivedTotalPages}
+                            >
+                              Next ›
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </div>
