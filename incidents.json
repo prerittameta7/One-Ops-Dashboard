@@ -14,8 +14,8 @@
     },
     "lastFetched": "2026-01-12T08:56:30.786Z",
     "domain": "FoxOne",
-    "archivedAt": null,
-    "archivedBy": null
+    "archivedAt": "2026-01-12T16:33:15.973Z",
+    "archivedBy": "Dashboard User"
   },
   {
     "key": "BIADS-19639",
@@ -78,7 +78,7 @@
     },
     "lastFetched": "2026-01-12T08:56:02.839Z",
     "domain": "AdSales",
-    "archivedAt": "2026-01-12T09:05:44.624Z",
-    "archivedBy": "Dashboard User"
+    "archivedAt": null,
+    "archivedBy": null
   }
 ]
