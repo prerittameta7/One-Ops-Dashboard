@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS } from '../../types/dashboard';
 import { KPICard } from './KPICard';
 import { PlatformChart } from './PlatformChart';
 import { CriticalInfoBox } from './CriticalInfoBox';
 import { JobsTable } from './JobsTable';
-import { CircleCheck, Clock, TriangleAlert, Trash2 } from 'lucide-react';
+import { CircleCheck, Clock, TriangleAlert, Trash2, Filter } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { getEffectiveDurationSecs } from '../../utils/metrics';
@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from './ui/alert-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 const JIRA_HOST = import.meta.env.VITE_JIRA_HOST || 'teamfox.atlassian.net';
 
@@ -40,6 +41,18 @@ interface DashboardPageProps {
   onDeleteBulletin: (id: string) => Promise<void>;
   domain?: string;
 }
+
+type IncidentSortKey =
+  | 'domain'
+  | 'key'
+  | 'title'
+  | 'issueType'
+  | 'status'
+  | 'assignee'
+  | 'reporter'
+  | 'created'
+  | 'updated'
+  | 'lastComment';
 
 export function DashboardPage({
   jobs,
@@ -72,6 +85,19 @@ export function DashboardPage({
   const [archivedPage, setArchivedPage] = useState(1);
   const [activePageSize, setActivePageSize] = useState(20);
   const [archivedPageSize, setArchivedPageSize] = useState(20);
+  const [activeSort, setActiveSort] = useState<{ key: IncidentSortKey; dir: 'asc' | 'desc' }>({
+    key: 'updated',
+    dir: 'desc'
+  });
+  const [archivedSort, setArchivedSort] = useState<{ key: IncidentSortKey; dir: 'asc' | 'desc' }>({
+    key: 'updated',
+    dir: 'desc'
+  });
+  const [domainFilter, setDomainFilter] = useState('all');
+  const [issueTypeFilter, setIssueTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [reporterFilter, setReporterFilter] = useState('all');
 
   const activeIncidents = useMemo(
     () => incidents.filter((incident) => !incident.archivedAt),
@@ -83,19 +109,104 @@ export function DashboardPage({
     [incidents]
   );
 
+  const incidentFilters = useMemo(() => {
+    const domains = new Set<string>();
+    const issueTypes = new Set<string>();
+    const statuses = new Set<string>();
+    const assignees = new Set<string>();
+    const reporters = new Set<string>();
+    incidents.forEach((inc) => {
+      if (inc.domain) domains.add(inc.domain);
+      if (inc.issueType) issueTypes.add(inc.issueType);
+      if (inc.status) statuses.add(inc.status);
+      if (inc.assignee) assignees.add(inc.assignee);
+      if (inc.reporter) reporters.add(inc.reporter);
+    });
+    return {
+      domains: Array.from(domains).sort(),
+      issueTypes: Array.from(issueTypes).sort(),
+      statuses: Array.from(statuses).sort(),
+      assignees: Array.from(assignees).sort(),
+      reporters: Array.from(reporters).sort(),
+    };
+  }, [incidents]);
+
+  const passesFilters = (inc: Incident) => {
+    const matchesDomain =
+      domainFilter === 'all' || (inc.domain || '').toLowerCase() === domainFilter.toLowerCase();
+    const matchesIssueType = issueTypeFilter === 'all' || inc.issueType === issueTypeFilter;
+    const matchesStatus = statusFilter === 'all' || inc.status === statusFilter;
+    const matchesAssignee = assigneeFilter === 'all' || inc.assignee === assigneeFilter;
+    const matchesReporter = reporterFilter === 'all' || inc.reporter === reporterFilter;
+    return matchesDomain && matchesIssueType && matchesStatus && matchesAssignee && matchesReporter;
+  };
+
   const incidentsForView = useMemo(() => {
     const list = domain
       ? activeIncidents.filter((inc) => inc.domain?.toLowerCase() === domain.toLowerCase())
       : activeIncidents;
-    return list;
-  }, [activeIncidents, domain]);
+    return list.filter(passesFilters);
+  }, [activeIncidents, domain, domainFilter, issueTypeFilter, assigneeFilter, reporterFilter]);
 
   const archivedIncidentsForView = useMemo(() => {
     const list = domain
       ? archivedIncidents.filter((inc) => inc.domain?.toLowerCase() === domain.toLowerCase())
       : archivedIncidents;
-    return list;
-  }, [archivedIncidents, domain]);
+    return list.filter(passesFilters);
+  }, [archivedIncidents, domain, domainFilter, issueTypeFilter, assigneeFilter, reporterFilter]);
+
+  const getIncidentSortValue = (incident: Incident, key: IncidentSortKey) => {
+    switch (key) {
+      case 'domain':
+        return incident.domain || '';
+      case 'key':
+        return incident.key || '';
+      case 'title':
+        return incident.title || '';
+      case 'issueType':
+        return incident.issueType || '';
+      case 'status':
+        return incident.status || '';
+      case 'assignee':
+        return incident.assignee || '';
+      case 'reporter':
+        return incident.reporter || '';
+      case 'created':
+        return incident.created ? new Date(incident.created).getTime() : 0;
+      case 'updated':
+        return incident.updated ? new Date(incident.updated).getTime() : 0;
+      case 'lastComment':
+        return incident.lastComment?.body || '';
+      default:
+        return '';
+    }
+  };
+
+  const sortIncidents = (items: Incident[], key: IncidentSortKey, dir: 'asc' | 'desc') => {
+    return [...items].sort((a, b) => {
+      const aVal = getIncidentSortValue(a, key);
+      const bVal = getIncidentSortValue(b, key);
+      if (aVal === bVal) return 0;
+      if (aVal === undefined || aVal === null) return 1;
+      if (bVal === undefined || bVal === null) return -1;
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return dir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return dir === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  };
+
+  const sortedActiveIncidents = useMemo(
+    () => sortIncidents(incidentsForView, activeSort.key, activeSort.dir),
+    [incidentsForView, activeSort]
+  );
+
+  const sortedArchivedIncidents = useMemo(
+    () => sortIncidents(archivedIncidentsForView, archivedSort.key, archivedSort.dir),
+    [archivedIncidentsForView, archivedSort]
+  );
 
   // Pagination helpers for incidents
   const paginate = (items: Incident[], page: number, pageSize: number) => {
@@ -110,12 +221,17 @@ export function DashboardPage({
   const {
     totalPages: activeTotalPages,
     pageItems: activePageItems,
-  } = paginate(incidentsForView, activePage, activePageSize);
+  } = paginate(sortedActiveIncidents, activePage, activePageSize);
 
   const {
     totalPages: archivedTotalPages,
     pageItems: archivedPageItems,
-  } = paginate(archivedIncidentsForView, archivedPage, archivedPageSize);
+  } = paginate(sortedArchivedIncidents, archivedPage, archivedPageSize);
+
+  useEffect(() => {
+    setActivePage(1);
+    setArchivedPage(1);
+  }, [domainFilter, issueTypeFilter, statusFilter, assigneeFilter, reporterFilter]);
 
   const incidentStatusSummary = useMemo(() => {
     if (!incidentsForView.length) return 'No active incidents';
@@ -245,6 +361,80 @@ export function DashboardPage({
     }
   };
 
+  const toggleActiveSort = (key: IncidentSortKey) => {
+    setActiveSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+    );
+    setActivePage(1);
+  };
+
+  const toggleArchivedSort = (key: IncidentSortKey) => {
+    setArchivedSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+    );
+    setArchivedPage(1);
+  };
+
+  const SortLabel = ({
+    label,
+    sortKey,
+    mode,
+  }: {
+    label: string;
+    sortKey: IncidentSortKey;
+    mode: 'active' | 'archived';
+  }) => {
+    const state = mode === 'active' ? activeSort : archivedSort;
+    const handler = mode === 'active' ? toggleActiveSort : toggleArchivedSort;
+    return (
+      <button type="button" onClick={() => handler(sortKey)} className="flex items-center gap-1 text-left">
+        <span>{label}</span>
+        <span className="text-xs text-gray-500">
+          {state.key === sortKey ? (state.dir === 'asc' ? '▲' : '▼') : ''}
+        </span>
+      </button>
+    );
+  };
+
+  const FilterControl = ({
+    value,
+    onChange,
+    options,
+  }: {
+    value: string;
+    onChange: (val: string) => void;
+    options: string[];
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="text-gray-400 hover:text-emerald-600 transition"
+          title="Filter"
+        >
+          <Filter className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-2 space-y-1">
+        <button
+          className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-emerald-50 ${value === 'all' ? 'bg-emerald-50 text-emerald-700' : ''}`}
+          onClick={() => onChange('all')}
+        >
+          All
+        </button>
+        {options.map((opt) => (
+          <button
+            key={opt}
+            className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-emerald-50 ${value === opt ? 'bg-emerald-50 text-emerald-700' : ''}`}
+            onClick={() => onChange(opt)}
+          >
+            {opt}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+
   return (
     <div className="space-y-6">
       {/* KPIs */}
@@ -342,15 +532,60 @@ export function DashboardPage({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Domain</TableHead>
-                            <TableHead>Incident #</TableHead>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Issue Type</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Assignee</TableHead>
-                            <TableHead>Reporter</TableHead>
-                            <TableHead>Created</TableHead>
-                            <TableHead>Updated</TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Domain" sortKey="domain" mode="active" />
+                                <FilterControl
+                                  value={domainFilter}
+                                  onChange={(v) => setDomainFilter(v)}
+                                  options={incidentFilters.domains}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead><SortLabel label="Incident #" sortKey="key" mode="active" /></TableHead>
+                            <TableHead><SortLabel label="Title" sortKey="title" mode="active" /></TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Issue Type" sortKey="issueType" mode="active" />
+                                <FilterControl
+                                  value={issueTypeFilter}
+                                  onChange={(v) => setIssueTypeFilter(v)}
+                                  options={incidentFilters.issueTypes}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Status" sortKey="status" mode="active" />
+                                <FilterControl
+                                  value={statusFilter}
+                                  onChange={(v) => setStatusFilter(v)}
+                                  options={incidentFilters.statuses}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Assignee" sortKey="assignee" mode="active" />
+                                <FilterControl
+                                  value={assigneeFilter}
+                                  onChange={(v) => setAssigneeFilter(v)}
+                                  options={incidentFilters.assignees}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Reporter" sortKey="reporter" mode="active" />
+                                <FilterControl
+                                  value={reporterFilter}
+                                  onChange={(v) => setReporterFilter(v)}
+                                  options={incidentFilters.reporters}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead><SortLabel label="Created" sortKey="created" mode="active" /></TableHead>
+                            <TableHead><SortLabel label="Updated" sortKey="updated" mode="active" /></TableHead>
                             <TableHead className="w-72">Last Comment</TableHead>
                             <TableHead className="w-28 text-right">Actions</TableHead>
                           </TableRow>
@@ -462,12 +697,50 @@ export function DashboardPage({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Domain</TableHead>
-                            <TableHead>Incident #</TableHead>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Deleted At</TableHead>
-                            <TableHead>Deleted By</TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Domain" sortKey="domain" mode="archived" />
+                                <FilterControl
+                                  value={domainFilter}
+                                  onChange={(v) => setDomainFilter(v)}
+                                  options={incidentFilters.domains}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead><SortLabel label="Incident #" sortKey="key" mode="archived" /></TableHead>
+                            <TableHead><SortLabel label="Title" sortKey="title" mode="archived" /></TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Status" sortKey="status" mode="archived" />
+                                <FilterControl
+                                  value={statusFilter}
+                                  onChange={(v) => setStatusFilter(v)}
+                                  options={incidentFilters.statuses}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Assignee" sortKey="assignee" mode="archived" />
+                                <FilterControl
+                                  value={assigneeFilter}
+                                  onChange={(v) => setAssigneeFilter(v)}
+                                  options={incidentFilters.assignees}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead>
+                              <div className="flex items-center gap-2">
+                                <SortLabel label="Reporter" sortKey="reporter" mode="archived" />
+                                <FilterControl
+                                  value={reporterFilter}
+                                  onChange={(v) => setReporterFilter(v)}
+                                  options={incidentFilters.reporters}
+                                />
+                              </div>
+                            </TableHead>
+                            <TableHead><SortLabel label="Deleted At" sortKey="updated" mode="archived" /></TableHead>
+                            <TableHead><SortLabel label="Deleted By" sortKey="assignee" mode="archived" /></TableHead>
                             <TableHead className="w-56 text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
