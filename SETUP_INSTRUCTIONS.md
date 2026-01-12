@@ -13,7 +13,7 @@ One Ops Dashboard provides comprehensive health monitoring for all domains in th
 
 ### Step 1: Open the Project
 ```bash
-# Navigate to the project directory
+# Navigate to the project directory Example: 
 cd "/Users/preritt.ameta/Desktop/One Ops Dashboard"
 
 # Or if you cloned it to a different location:
