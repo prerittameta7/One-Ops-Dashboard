@@ -4,9 +4,9 @@ import { Button } from './components/ui/button';
 import { DashboardPage } from './components/DashboardPage';
 import { FilterSidebar } from './components/FilterSidebar';
 import { RefreshCw, Calendar, Loader } from 'lucide-react';
-import { JobData, Bulletin, DOMAINS, Incident } from '../types/dashboard';
+import { JobData, Bulletin, DOMAINS, Incident, DomainHistoryPoint, DomainIncidentHistoryPoint } from '../types/dashboard';
 import { calculateMetrics, calculatePlatformMetrics } from '../utils/metrics';
-import { fetchJobs, fetchBulletins, saveBulletin, deleteBulletin, fetchIncidents, addIncident, refreshIncidents, archiveIncident, restoreIncident, deleteIncidentPermanently } from '../utils/api';
+import { fetchJobs, fetchBulletins, saveBulletin, deleteBulletin, fetchIncidents, addIncident, refreshIncidents, archiveIncident, restoreIncident, deleteIncidentPermanently, fetchHistory } from '../utils/api';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
@@ -16,6 +16,8 @@ export default function App() {
   const [allJobs, setAllJobs] = useState<JobData[]>([]);
   const [bulletins, setBulletins] = useState<Bulletin[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [history, setHistory] = useState<DomainHistoryPoint[]>([]);
+  const [incidentHistory, setIncidentHistory] = useState<DomainIncidentHistoryPoint[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -31,6 +33,7 @@ export default function App() {
   useEffect(() => {
     if (selectedDate) {
       loadJobs();
+      loadHistory();
     }
   }, [selectedDate]);
 
@@ -68,6 +71,7 @@ export default function App() {
 
   const handleRefresh = () => {
     loadJobs(true); // force refresh bypassing cache
+    loadHistory();
   };
 
   const loadIncidents = async (refresh = false) => {
@@ -78,6 +82,19 @@ export default function App() {
       console.error('Error loading incidents:', error);
       toast.error('Failed to load incidents');
       setIncidents([]);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const response = await fetchHistory(dateStr);
+      setHistory(response.history || []);
+      setIncidentHistory(response.incidents || []);
+    } catch (error) {
+      console.error('Error loading history:', error);
+      setHistory([]);
+      setIncidentHistory([]);
     }
   };
 
@@ -277,6 +294,8 @@ export default function App() {
               platformMetrics={platformMetrics}
               bulletins={bulletins}
               incidents={incidents}
+              history={history}
+              incidentHistory={incidentHistory}
               onAddIncident={handleAddIncident}
               onRefreshIncidents={handleRefreshIncidents}
               onArchiveIncident={handleArchiveIncident}
@@ -295,6 +314,8 @@ export default function App() {
                 platformMetrics={platformMetrics}
                 bulletins={bulletins}
                 incidents={incidents}
+              history={history}
+              incidentHistory={incidentHistory}
                 onAddIncident={handleAddIncident}
                 onRefreshIncidents={handleRefreshIncidents}
                 onArchiveIncident={handleArchiveIncident}

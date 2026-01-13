@@ -13,6 +13,19 @@ export interface AddIncidentPayload {
   domain: string;
 }
 
+export interface HistoryPoint {
+  domain_name: string;
+  job_date: string;
+  job_status: string;
+  count: number;
+}
+
+export interface IncidentHistoryPoint {
+  domain: string;
+  status: string;
+  count: number;
+}
+
 export async function fetchJobs(params: FetchJobsParams) {
   const response = await fetch(`${API_BASE_URL}/api/dashboard/jobs`, {
     method: 'POST',
@@ -28,6 +41,16 @@ export async function fetchJobs(params: FetchJobsParams) {
   }
 
   return response.json();
+}
+
+export async function fetchHistory(selectedDate: string) {
+  const url = `${API_BASE_URL}/api/dashboard/history?selectedDate=${encodeURIComponent(selectedDate)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch history');
+  }
+  return response.json() as Promise<{ success: boolean; history: HistoryPoint[]; incidents: IncidentHistoryPoint[] }>;
 }
 
 export async function fetchIncidents(refresh = false) {
