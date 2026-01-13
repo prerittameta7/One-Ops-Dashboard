@@ -1,5 +1,23 @@
 [
   {
+    "key": "BIADS-19683",
+    "title": "Ingest Fox News Competitive Push Alerts from Slack into Snowflake ",
+    "status": "New",
+    "issueType": "Story",
+    "assignee": "Preritt Ameta",
+    "reporter": "Mihir Modi",
+    "created": "2026-01-12T21:48:42.215-0800",
+    "updated": "2026-01-13T10:12:38.230-0800",
+    "lastComment": {
+      "author": "Preritt Ameta",
+      "body": "Re-instated the permissions and configured the OAuth redirect path on the the slack app and sent for the approval to the slack admin. currently under review."
+    },
+    "lastFetched": "2026-01-13T18:15:57.623Z",
+    "domain": "FoxOne",
+    "archivedAt": null,
+    "archivedBy": null
+  },
+  {
     "key": "BIADS-19337",
     "title": "Foxone Subscription - Snowflake Task Timeout issue",
     "status": "Done",
@@ -12,7 +30,7 @@
       "author": "Preritt Ameta",
       "body": "As per the new runtime for Amazon which is under 9 mins. We’re good to close this for Amazon Snowflake Task"
     },
-    "lastFetched": "2026-01-12T08:56:30.786Z",
+    "lastFetched": "2026-01-13T18:15:32.061Z",
     "domain": "FoxOne",
     "archivedAt": null,
     "archivedBy": null
@@ -26,10 +44,10 @@
     "reporter": "Rishabh Soni",
     "created": "2026-01-08T06:09:56.038-0800",
     "updated": "2026-01-08T09:11:12.193-0800",
-    "lastFetched": "2026-01-12T08:56:00.080Z",
+    "lastFetched": "2026-01-13T18:15:33.180Z",
     "domain": "AdSales",
-    "archivedAt": "2026-01-12T09:05:33.656Z",
-    "archivedBy": "Dashboard User"
+    "archivedAt": null,
+    "archivedBy": null
   },
   {
     "key": "BIADS-18639",
@@ -44,8 +62,10 @@
       "author": "Shelby Jennings",
       "body": "Closing as duplicate to"
     },
-    "lastFetched": "2026-01-12T08:56:00.498Z",
-    "domain": "AdSales"
+    "lastFetched": "2026-01-13T18:15:33.561Z",
+    "domain": "AdSales",
+    "archivedAt": null,
+    "archivedBy": null
   },
   {
     "key": "BIADS-17146",
@@ -60,8 +80,10 @@
       "author": "Shubham Nasare",
       "body": "I have tested gsheets overriding for highlights, business articles and top videos. Confirming that it is working as expected. Test results uploaded here:"
     },
-    "lastFetched": "2026-01-12T08:56:01.696Z",
-    "domain": "Engagement"
+    "lastFetched": "2026-01-13T18:15:34.666Z",
+    "domain": "Engagement",
+    "archivedAt": null,
+    "archivedBy": null
   },
   {
     "key": "BIADS-19220",
@@ -76,9 +98,9 @@
       "author": "Anitha Mohanraj",
       "body": "We can decommission this dag."
     },
-    "lastFetched": "2026-01-12T08:56:02.839Z",
+    "lastFetched": "2026-01-13T18:15:35.807Z",
     "domain": "AdSales",
-    "archivedAt": "2026-01-12T09:05:44.624Z",
-    "archivedBy": "Dashboard User"
+    "archivedAt": null,
+    "archivedBy": null
   }
 ]

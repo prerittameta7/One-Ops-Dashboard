@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Badge } from './ui/badge';
@@ -7,8 +7,9 @@ import { Button } from './ui/button';
 import { JobData } from '../../types/dashboard';
 import { getStatusBadgeColor, getEffectiveDurationSecs } from '../../utils/metrics';
 import { format } from 'date-fns';
-import { Search } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 
 
 interface JobsTableProps {
@@ -16,12 +17,30 @@ interface JobsTableProps {
   title?: string;
 }
 
+type SortKey =
+  | 'job_name'
+  | 'job_platform'
+  | 'domain_name'
+  | 'job_status'
+  | 'job_start_time_utc'
+  | 'job_end_time_utc'
+  | 'progress'
+  | 'eta'
+  | 'avg_duration_secs'
+  | 'parent_pipeline'
+  | 'datasource_name';
+
 export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-
-  const PAGE_SIZE = 20;
+  const [sortKey, setSortKey] = useState<SortKey>('job_start_time_utc');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [platformFilter, setPlatformFilter] = useState('all');
+  const [domainFilter, setDomainFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [datasourceFilter, setDatasourceFilter] = useState('all');
+  const [pipelineFilter, setPipelineFilter] = useState('all');
 
   const formatSeconds = (seconds: number | null) => {
     if (seconds === null || Number.isNaN(seconds)) return '-';
@@ -77,17 +96,48 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
     return { fill: '#d1fae5', text: 'text-emerald-800', label: `${rounded}%`, width, container: 'bg-white' };
   };
 
-  const filteredJobs = jobs.filter(job =>
-    job.job_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.job_platform.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.domain_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.job_status.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const distinct = useMemo(() => {
+    const platforms = new Set<string>();
+    const domains = new Set<string>();
+    const statuses = new Set<string>();
+    const datasources = new Set<string>();
+    const pipelines = new Set<string>();
+    jobs.forEach((job) => {
+      if (job.job_platform) platforms.add(job.job_platform);
+      if (job.domain_name) domains.add(job.domain_name);
+      if (job.job_status) statuses.add(job.job_status);
+      if (job.datasource_name) datasources.add(job.datasource_name);
+      if (job.parent_pipeline) pipelines.add(job.parent_pipeline);
+    });
+    return {
+      platforms: Array.from(platforms).sort(),
+      domains: Array.from(domains).sort(),
+      statuses: Array.from(statuses).sort(),
+      datasources: Array.from(datasources).sort(),
+      pipelines: Array.from(pipelines).sort(),
+    };
+  }, [jobs]);
+
+  const filteredJobs = jobs.filter(job => {
+    const matchesSearch =
+      job.job_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.job_platform.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.domain_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.job_status.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesPlatform = platformFilter === 'all' || job.job_platform === platformFilter;
+    const matchesDomain = domainFilter === 'all' || job.domain_name === domainFilter;
+    const matchesStatus = statusFilter === 'all' || job.job_status === statusFilter;
+    const matchesDatasource = datasourceFilter === 'all' || job.datasource_name === datasourceFilter;
+    const matchesPipeline = pipelineFilter === 'all' || job.parent_pipeline === pipelineFilter;
+
+    return matchesSearch && matchesPlatform && matchesDomain && matchesStatus && matchesDatasource && matchesPipeline;
+  });
 
   // Reset pagination on filter change
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, jobs]);
+  }, [searchTerm, jobs, platformFilter, domainFilter, statusFilter, datasourceFilter, pipelineFilter, pageSize]);
 
   const parseStartTime = (value: string) => {
     if (!value || value === '-') return 0;
@@ -95,10 +145,55 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
     return Number.isNaN(ts) ? 0 : ts;
   };
 
+  const getEtaMs = (job: JobData) => {
+    if (!job.avg_duration_secs) return 0;
+    const start = parseStartTime(job.job_start_time_utc);
+    return start ? start + job.avg_duration_secs * 1.25 * 1000 : 0;
+  };
+
+  const getSortValue = (job: JobData, key: SortKey) => {
+    switch (key) {
+      case 'job_name':
+        return job.job_name || '';
+      case 'job_platform':
+        return job.job_platform || '';
+      case 'domain_name':
+        return job.domain_name || '';
+      case 'job_status':
+        return job.job_status || '';
+      case 'job_start_time_utc':
+        return parseStartTime(job.job_start_time_utc);
+      case 'job_end_time_utc':
+        return parseStartTime(job.job_end_time_utc);
+      case 'progress': {
+        const p = getProgressPercent(job);
+        return p === null ? -1 : p;
+      }
+      case 'eta':
+        return getEtaMs(job);
+      case 'avg_duration_secs':
+        return job.avg_duration_secs || 0;
+      case 'parent_pipeline':
+        return job.parent_pipeline || '';
+      case 'datasource_name':
+        return job.datasource_name || '';
+      default:
+        return '';
+    }
+  };
+
   const sortedJobs = [...filteredJobs].sort((a, b) => {
-    const aTime = parseStartTime(a.job_start_time_utc);
-    const bTime = parseStartTime(b.job_start_time_utc);
-    return bTime - aTime; // newest first
+    const aVal = getSortValue(a, sortKey);
+    const bVal = getSortValue(b, sortKey);
+    if (aVal === bVal) return 0;
+    if (aVal === undefined || aVal === null) return 1;
+    if (bVal === undefined || bVal === null) return -1;
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    }
+    return sortDir === 'asc'
+      ? String(aVal).localeCompare(String(bVal))
+      : String(bVal).localeCompare(String(aVal));
   });
 
   const totalPages = Math.max(1, Math.ceil(sortedJobs.length / pageSize));
@@ -113,6 +208,67 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
       effectiveDuration > job.avg_duration_secs * 1.5
     );
   };
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortLabel = ({ label, keyName }: { label: string; keyName: SortKey }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(keyName)}
+      className="flex items-center gap-1 text-left"
+    >
+      <span>{label}</span>
+      <span className="text-xs text-gray-500">
+        {sortKey === keyName ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+      </span>
+    </button>
+  );
+
+  const FilterControl = ({
+    value,
+    onChange,
+    options,
+  }: {
+    value: string;
+    onChange: (val: string) => void;
+    options: string[];
+  }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="text-gray-400 hover:text-emerald-600 transition"
+          title="Filter"
+        >
+          <Filter className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-2 space-y-1">
+        <button
+          className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-emerald-50 ${value === 'all' ? 'bg-emerald-50 text-emerald-700' : ''}`}
+          onClick={() => onChange('all')}
+        >
+          All
+        </button>
+        {options.map((opt) => (
+          <button
+            key={opt}
+            className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-emerald-50 ${value === opt ? 'bg-emerald-50 text-emerald-700' : ''}`}
+            onClick={() => onChange(opt)}
+          >
+            {opt}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
 
   return (
     <Card>
@@ -135,17 +291,78 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Job Name</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Domain</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start Time</TableHead>
-                <TableHead>End Time</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>ETA</TableHead>
-                <TableHead>Avg Duration</TableHead>
-                <TableHead>Pipeline</TableHead>
-                <TableHead>Datasource</TableHead>
+                <TableHead><SortLabel label="Job Name" keyName="job_name" /></TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    <SortLabel label="Platform" keyName="job_platform" />
+                    <FilterControl
+                      value={platformFilter}
+                      onChange={(v) => setPlatformFilter(v)}
+                      options={distinct.platforms}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    <SortLabel label="Domain" keyName="domain_name" />
+                    <FilterControl
+                      value={domainFilter}
+                      onChange={(v) => setDomainFilter(v)}
+                      options={distinct.domains}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    <SortLabel label="Status" keyName="job_status" />
+                    <FilterControl
+                      value={statusFilter}
+                      onChange={(v) => setStatusFilter(v)}
+                      options={distinct.statuses}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead><SortLabel label="Start Time" keyName="job_start_time_utc" /></TableHead>
+                <TableHead><SortLabel label="End Time" keyName="job_end_time_utc" /></TableHead>
+                <TableHead>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1">
+                        <SortLabel label="Pacing %" keyName="progress" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent sideOffset={6}>
+                      <div className="max-w-xs space-y-1">
+                        <div className="font-semibold">Pacing %</div>
+                        <div className="text-sm">
+                          Elapsed runtime vs average. 100% = on average, &gt;100% = overrunning, &lt;100% = faster than average.
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+                <TableHead><SortLabel label="ETA" keyName="eta" /></TableHead>
+                <TableHead><SortLabel label="Avg Duration" keyName="avg_duration_secs" /></TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    <SortLabel label="Pipeline" keyName="parent_pipeline" />
+                    <FilterControl
+                      value={pipelineFilter}
+                      onChange={(v) => setPipelineFilter(v)}
+                      options={distinct.pipelines}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div className="flex items-center gap-2">
+                    <SortLabel label="Datasource" keyName="datasource_name" />
+                    <FilterControl
+                      value={datasourceFilter}
+                      onChange={(v) => setDatasourceFilter(v)}
+                      options={distinct.datasources}
+                    />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

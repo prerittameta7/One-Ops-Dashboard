@@ -84,3 +84,16 @@ export const DOMAINS = [
 ] as const;
 
 export type Domain = typeof DOMAINS[number] | 'all';
+
+export interface DomainHistoryPoint {
+  domain_name: string;
+  job_date: string; // yyyy-MM-dd
+  job_status: JobData['job_status'];
+  count: number;
+}
+
+export interface DomainIncidentHistoryPoint {
+  domain: string;
+  status: string;
+  count: number;
+}

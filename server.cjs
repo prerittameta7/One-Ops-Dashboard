@@ -338,6 +338,65 @@ app.post('/api/dashboard/jobs', async (req, res) => {
   }
 });
 
+// API Endpoint: 7-day history per domain (job status counts + incidents by status)
+app.get('/api/dashboard/history', async (req, res) => {
+  try {
+    const selectedDate = req.query.selectedDate;
+    if (!selectedDate) {
+      return res.status(400).json({ error: 'selectedDate is required (yyyy-MM-dd)' });
+    }
+
+    const startWindow = `date_sub('${selectedDate}', 6)`;
+
+    const historyQuery = `
+      SELECT
+        domain_name,
+        job_date,
+        job_status,
+        COUNT(*) as count
+      FROM fox_bi_dev.dataops_dashboard.vw_job_status_latest_per_day
+      WHERE job_date BETWEEN ${startWindow} AND '${selectedDate}'
+      GROUP BY domain_name, job_date, job_status
+      ORDER BY job_date DESC
+    `;
+
+    const historyRows = await executeDatabricksQuery(historyQuery);
+
+    // Aggregate incidents by domain and status (active + archived separately not needed here)
+    let incidents = [];
+    try {
+      const incData = await fs.readFile(INCIDENTS_FILE, 'utf8');
+      incidents = JSON.parse(incData);
+    } catch (e) {
+      incidents = [];
+    }
+
+    const incidentAgg = incidents.reduce((acc, inc) => {
+      const domain = inc.domain || 'Unknown';
+      const status = inc.status || 'Unknown';
+      const key = `${domain}::${status}`;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const incidentStats = Object.entries(incidentAgg).map(([key, count]) => {
+      const [domain, status] = key.split('::');
+      return { domain, status, count };
+    });
+
+    res.json({
+      success: true,
+      history: historyRows,
+      incidents: incidentStats
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard history:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to fetch history'
+    });
+  }
+});
+
 // API Endpoint: Clear cache (all or specific key)
 app.post('/api/cache/clear', (req, res) => {
   const { selectedDate, domain } = req.body || {};
