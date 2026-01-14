@@ -864,7 +864,7 @@ export function DashboardPage({
   const domainsToRender = domain ? [domain] : ['__all__'];
 
   // AI Agent state
-  const [aiMessage, setAiMessage] = useState<string>('Run to get AI summary');
+  const [aiMessage, setAiMessage] = useState<string>("Take a chill pill — AI's covering for you!!");
   const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -1002,7 +1002,7 @@ export function DashboardPage({
                 </div>
               )}
               {!aiUpdatedAt && !aiLoading && (
-                <div className="text-xs text-gray-500 dark:text-gray-400">Tap refresh to get the latest AI summary.</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Refresh to get the latest feed.</div>
               )}
             </CardContent>
           </Card>
