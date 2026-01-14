@@ -4,7 +4,7 @@ import { KPICard } from './KPICard';
 import { PlatformChart } from './PlatformChart';
 import { CriticalInfoBox } from './CriticalInfoBox';
 import { JobsTable } from './JobsTable';
-import { CircleCheck, Clock, TriangleAlert, Trash2, Filter } from 'lucide-react';
+import { CircleCheck, Clock, TriangleAlert, Trash2, Filter, Bot } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { getEffectiveDurationSecs } from '../../utils/metrics';
@@ -24,6 +24,8 @@ import {
 } from './ui/alert-dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { fetchAiSummary, AiDomainSummary } from '../../utils/api';
 
 const JIRA_HOST = (import.meta as any).env?.VITE_JIRA_HOST || 'teamfox.atlassian.net';
 
@@ -268,6 +270,7 @@ interface DashboardPageProps {
   platformMetrics: PlatformMetrics[];
   bulletins: Bulletin[];
   incidents: Incident[];
+  selectedDate: Date;
   onAddIncident: (incidentKey: string, domain: string) => Promise<void>;
   onRefreshIncidents: () => Promise<void>;
   onArchiveIncident: (incidentKey: string) => Promise<void>;
@@ -298,6 +301,7 @@ export function DashboardPage({
   platformMetrics,
   bulletins,
   incidents,
+  selectedDate,
   history,
   incidentHistory,
   onAddIncident,
@@ -854,6 +858,63 @@ export function DashboardPage({
 
   const domainsToRender = domain ? [domain] : ['__all__'];
 
+  // AI Agent state
+  const [aiMessage, setAiMessage] = useState<string>('Run to get AI summary');
+  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const buildAiDomains = () => {
+    const list: AiDomainSummary[] = [];
+    const targetDomains = domain ? [domain] : DOMAINS;
+    targetDomains.forEach((d) => {
+      const key = norm(d);
+      const jobsForDomain = domainJobsMap.get(key) || [];
+      const incidentsForDomain = incidents.filter((inc) => norm(inc.domain) === key);
+
+      const totalJobs = jobsForDomain.length;
+      const failed = jobsForDomain.filter((j) => j.job_status === 'FAILED').length;
+      const pending = jobsForDomain.filter((j) => j.job_status === 'PENDING').length;
+      const running = jobsForDomain.filter((j) => j.job_status === 'RUNNING').length;
+      const queued = jobsForDomain.filter((j) => j.job_status === 'QUEUED').length;
+      const overrunning = jobsForDomain.filter(isOverrunning).length;
+
+      // Anomaly based on failure rate vs median in 7d window
+      const series = buildHistorySeries(d);
+      const anomaly = getAnomalyFlag(series);
+
+      list.push({
+        name: d,
+        totalJobs,
+        failed,
+        pending,
+        running,
+        queued,
+        overrunning,
+        incidents: incidentsForDomain.length,
+        anomaly,
+      });
+    });
+    return list;
+  };
+
+  const handleAiRefresh = async () => {
+    try {
+      setAiLoading(true);
+      setAiError(null);
+      const domainsPayload = buildAiDomains();
+      const dateStr = selectedDate ? new Date(selectedDate).toISOString().slice(0, 10) : '';
+      const resp = await fetchAiSummary(domainsPayload, dateStr);
+      setAiMessage(resp.message);
+      setAiUpdatedAt(resp.updatedAt);
+    } catch (err: any) {
+      console.error('AI summary error:', err);
+      setAiError(err?.message || 'Failed to fetch AI summary');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Domain Health + KPIs + Bulletins (side-by-side on desktop) */}
@@ -861,7 +922,7 @@ export function DashboardPage({
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Domain Health</h2>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
           <div className="h-full">
             {domainsToRender.map((d) => (
               (() => {
@@ -901,11 +962,60 @@ export function DashboardPage({
         </div>
       </div>
 
-      {/* Platform Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <div>
+      {/* Platform Chart + AI Agent */}
+      <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
+        <div className="h-full">
           <PlatformChart data={platformMetrics} />
         </div>
+        <Card className="h-full bg-gradient-to-br from-white via-emerald-50 to-white border border-emerald-100 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-emerald-900">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+                  <Bot className="h-4 w-4 text-emerald-700" />
+                </span>
+                AI Ops Agent
+                <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                  Manual
+                </span>
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                onClick={handleAiRefresh}
+                disabled={aiLoading}
+              >
+                {aiLoading ? 'Running…' : 'Refresh'}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {aiError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                {aiError}
+              </div>
+            )}
+            <div
+              className={`min-h-[64px] text-sm whitespace-pre-wrap leading-snug rounded-md px-3 py-2 border ${
+                aiLoading
+                  ? 'border-emerald-50 bg-emerald-50 animate-pulse text-emerald-700'
+                  : 'border-emerald-100 bg-white text-gray-900'
+              }`}
+            >
+              {aiMessage}
+            </div>
+            {aiUpdatedAt && (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                Updated: {new Date(aiUpdatedAt).toLocaleString()}
+              </div>
+            )}
+            {!aiUpdatedAt && !aiLoading && (
+              <div className="text-xs text-gray-500">Tap refresh to get the latest AI summary.</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Jobs & Incidents Section */}

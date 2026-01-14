@@ -15,6 +15,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { DBSQLClient } = require('@databricks/sql');
 const https = require('https');
+const fetch = require('node-fetch');
 require('dotenv').config();
 
 const app = express();
@@ -662,6 +663,71 @@ app.get('/api/health', (req, res) => {
     databricksConfigured: isDatabricksConfigured,
     timestamp: new Date().toISOString()
   });
+});
+
+// AI Ops Summary (manual trigger)
+app.post('/api/ai/ops-summary', async (req, res) => {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+    }
+
+    const { domains, selectedDate } = req.body || {};
+    if (!Array.isArray(domains) || !domains.length) {
+      return res.status(400).json({ error: 'domains array is required' });
+    }
+
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    const prompt = `
+You are an SRE/ops assistant. Summarize the current health succinctly.
+Keep to 2 short sentences. If clean: friendly "all good" tone. If issues: highlight domains with failures/pending/overruns/incidents.
+Do NOT include IDs or secrets. Be concise.
+
+Selected date: ${selectedDate || 'unknown'}
+
+Domains:
+${domains.map(d => `- ${d.name}: jobs total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}`).join('\n')}
+    `.trim();
+
+    const payload = {
+      model,
+      messages: [
+        { role: 'system', content: 'You are a concise SRE assistant for an ops dashboard.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.4,
+      max_tokens: 120
+    };
+
+    const aiResp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!aiResp.ok) {
+      const text = await aiResp.text();
+      console.error('OpenAI error:', aiResp.status, text);
+      return res.status(502).json({ error: 'AI service failed', details: text });
+    }
+
+    const data = await aiResp.json();
+    const message = data.choices?.[0]?.message?.content?.trim() || 'No summary available.';
+
+    res.json({
+      success: true,
+      message,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('AI summary error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate AI summary' });
+  }
 });
 
 app.listen(PORT, () => {

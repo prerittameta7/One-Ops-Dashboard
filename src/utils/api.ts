@@ -26,6 +26,42 @@ export interface IncidentHistoryPoint {
   count: number;
 }
 
+export interface AiDomainSummary {
+  name: string;
+  totalJobs: number;
+  failed: number;
+  pending: number;
+  running: number;
+  queued: number;
+  overrunning: number;
+  incidents: number;
+  anomaly: boolean;
+}
+
+export interface AiSummaryResponse {
+  success: boolean;
+  message: string;
+  updatedAt: string;
+}
+
+export interface AiDomainSummary {
+  name: string;
+  totalJobs: number;
+  failed: number;
+  pending: number;
+  running: number;
+  queued: number;
+  overrunning: number;
+  incidents: number;
+  anomaly: boolean;
+}
+
+export interface AiSummaryResponse {
+  success: boolean;
+  message: string;
+  updatedAt: string;
+}
+
 export async function fetchJobs(params: FetchJobsParams) {
   const response = await fetch(`${API_BASE_URL}/api/dashboard/jobs`, {
     method: 'POST',
@@ -51,6 +87,19 @@ export async function fetchHistory(selectedDate: string) {
     throw new Error(error.error || 'Failed to fetch history');
   }
   return response.json() as Promise<{ success: boolean; history: HistoryPoint[]; incidents: IncidentHistoryPoint[] }>;
+}
+
+export async function fetchAiSummary(domains: AiDomainSummary[], selectedDate: string) {
+  const response = await fetch(`${API_BASE_URL}/api/ai/ops-summary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domains, selectedDate }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to fetch AI summary');
+  }
+  return response.json() as Promise<AiSummaryResponse>;
 }
 
 export async function fetchIncidents(refresh = false) {

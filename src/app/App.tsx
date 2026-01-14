@@ -296,6 +296,7 @@ export default function App() {
               incidents={incidents}
               history={history}
               incidentHistory={incidentHistory}
+              selectedDate={selectedDate}
               onAddIncident={handleAddIncident}
               onRefreshIncidents={handleRefreshIncidents}
               onArchiveIncident={handleArchiveIncident}
@@ -316,6 +317,7 @@ export default function App() {
                 incidents={incidents}
               history={history}
               incidentHistory={incidentHistory}
+              selectedDate={selectedDate}
                 onAddIncident={handleAddIncident}
                 onRefreshIncidents={handleRefreshIncidents}
                 onArchiveIncident={handleArchiveIncident}
