@@ -45,7 +45,7 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
   };
 
   return (
-    <Card className="h-full bg-gradient-to-br from-white via-rose-50 to-white border border-rose-100 shadow-sm">
+    <Card className="h-full bg-gradient-to-br from-white via-rose-50 to-white border border-rose-100 shadow-sm dark:bg-gradient-to-br dark:from-[#1f2937] dark:via-[#111827] dark:to-[#0f172a] dark:border-rose-200/60">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -64,7 +64,7 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
       <CardContent>
         <div className="space-y-3 max-h-[300px] overflow-y-auto">
           {isAdding && (
-            <div className="space-y-2 p-3 border rounded-lg bg-yellow-50">
+            <div className="space-y-2 p-3 border rounded-lg bg-yellow-50 dark:bg-yellow-900/30 dark:border-yellow-700">
               <Textarea
                 placeholder="Enter critical information..."
                 value={newMessage}
@@ -95,7 +95,7 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
           )}
 
           {bulletins.length === 0 && !isAdding && (
-            <p className="text-sm text-gray-500 text-center py-8">
+            <p className="text-sm text-gray-500 text-center py-8 dark:text-gray-300">
               No critical bulletins. Click + to add one.
             </p>
           )}
@@ -103,14 +103,14 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
           {bulletins.map((bulletin) => (
             <div
               key={bulletin.id}
-              className="p-3 bg-white border border-rose-200 rounded-lg group relative shadow-sm"
+              className="p-3 bg-white border border-rose-200 rounded-lg group relative shadow-sm dark:bg-slate-900 dark:border-rose-200/70"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                  <p className="text-sm text-gray-900 whitespace-pre-wrap dark:text-gray-100">
                     {bulletin.message}
                   </p>
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
                     {format(new Date(bulletin.timestamp), 'MMM dd, yyyy HH:mm')} • {bulletin.createdBy}
                   </p>
                 </div>

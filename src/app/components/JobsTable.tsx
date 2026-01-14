@@ -71,10 +71,10 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
     if (percent === null) {
       return {
         fill: '#e5e7eb',
-        text: 'text-gray-700',
+        text: 'text-gray-700 dark:text-slate-200',
         label: '-',
         width: 0,
-        container: 'bg-white',
+        container: 'bg-white dark:bg-slate-800/60',
       };
     }
 
@@ -271,7 +271,7 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
   );
 
   return (
-    <Card>
+    <Card className="bg-white dark:bg-[#111827] dark:border-slate-700">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>{title}</CardTitle>
@@ -407,7 +407,7 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
-                              className={`relative h-9 w-44 rounded-md border border-gray-200 overflow-hidden ${isOverrunning(job) ? 'ring-1 ring-red-300' : ''}`}
+                              className={`relative h-9 w-44 rounded-md border border-gray-200 overflow-hidden ${isOverrunning(job) ? 'ring-1 ring-red-300' : ''} dark:border-slate-700`}
                               aria-label={`Progress ${label}`}
                             >
                               <div className={`absolute inset-0 ${container}`} />
@@ -420,7 +420,7 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
                               </div>
                             </div>
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-xs" sideOffset={6}>
+                          <TooltipContent className="max-w-xs dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700" sideOffset={6}>
                             <div className="space-y-1 text-left">
                               <div className="font-semibold">Progress</div>
                               <div>Percent: {label}</div>
@@ -431,8 +431,8 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
                           </TooltipContent>
                         </Tooltip>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-700">{etaDisplay}</TableCell>
-                      <TableCell className="text-gray-600">
+                      <TableCell className="text-sm text-gray-700 dark:text-slate-200">{etaDisplay}</TableCell>
+                      <TableCell className="text-gray-600 dark:text-slate-300">
                         {formatSeconds(job.avg_duration_secs)}
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
@@ -446,11 +446,11 @@ export function JobsTable({ jobs, title = 'All Jobs' }: JobsTableProps) {
             </TableBody>
           </Table>
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap dark:text-slate-300">
           <div className="flex items-center gap-2">
-            <span className="text-gray-700">Rows per page</span>
+            <span className="text-gray-700 dark:text-slate-200">Rows per page</span>
             <select
-              className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-blue-400"
               value={pageSize}
               onChange={(e) => {
                 const nextSize = Number(e.target.value);

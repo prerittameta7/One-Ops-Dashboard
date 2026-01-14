@@ -35,6 +35,8 @@ const STATUS_COLORS: Record<string, string> = {
   RUNNING: '#3b82f6',
   PENDING: '#eab308',
   QUEUED: '#f97316',
+  SKIPPED: '#9ca3af',
+  UPSTREAM_FAILED: '#ef4444',
   UNKNOWN: '#6b7280',
 };
 
@@ -93,6 +95,9 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   incidentSummary,
   onScroll,
 }: DomainHealthProps) {
+  const pendingJobs = statusData.find((s) => s.name === 'PENDING')?.value || 0;
+  const skippedJobs = statusData.find((s) => s.name === 'SKIPPED')?.value || 0;
+  const upstreamFailedJobs = statusData.find((s) => s.name === 'UPSTREAM_FAILED')?.value || 0;
   const hasAnimatedRef = useRef(false);
   const hasAnimatedIncidentsRef = useRef(false);
 
@@ -105,7 +110,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   }, [totalIncidents]);
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm h-full min-h-[320px]">
+    <div className="rounded-xl border bg-white p-4 shadow-sm h-full min-h-[320px] dark:bg-[#111827] dark:border-slate-700">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{label}</h3>
@@ -146,7 +151,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                     content={({ active }) => {
                       if (!active) return null;
                       return (
-                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
+                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
                           <div className="font-semibold mb-1">Status breakdown</div>
                           {statusData.map((s) => (
                             <div key={s.name} className="flex items-center gap-2">
@@ -191,7 +196,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                     content={({ active }) => {
                       if (!active) return null;
                       return (
-                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
+                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
                           <div className="font-semibold mb-1">Incidents breakdown</div>
                           {incidentData.map((s) => (
                             <div key={s.name} className="flex items-center gap-2">
@@ -238,7 +243,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
             title="Job Status"
             value={totalJobs}
             icon={CircleCheck}
-            description={`Success: ${successJobs} | Failed: ${failedJobs} | Running: ${runningJobs}`}
+            description={`Success: ${successJobs} | Failed: ${failedJobs} | Running: ${runningJobs} | Pending: ${pendingJobs} | Skipped: ${skippedJobs} | Upstream failed: ${upstreamFailedJobs}`}
             iconColor="text-blue-600"
             onClick={() => onScroll('all')}
           />
@@ -952,22 +957,22 @@ export function DashboardPage({
               })()
             ))}
           </div>
-          <Card className="h-full bg-gradient-to-br from-[#f8fafc] via-[#edf2f7] to-[#ffffff] border border-blue-200 shadow-sm">
+          <Card className="h-full bg-gradient-to-br from-[#f8fafc] via-[#edf2f7] to-[#ffffff] border border-blue-200 shadow-sm dark:bg-gradient-to-br dark:from-[#0f172a] dark:via-[#111827] dark:to-[#0b1220] dark:border-slate-700">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-gray-900">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                    <Bot className="h-4 w-4 text-blue-700" />
+                <span className="flex items-center gap-2 text-gray-900 dark:text-blue-100">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40">
+                    <Bot className="h-4 w-4 text-blue-700 dark:text-blue-100" />
                   </span>
                   AI Ops Agent
-                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
                     Manual
                   </span>
                 </span>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-blue-300 text-blue-900 hover:bg-blue-50"
+                  className="border-blue-300 text-blue-900 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-100 dark:hover:bg-blue-900/40"
                   onClick={handleAiRefresh}
                   disabled={aiLoading}
                 >
@@ -977,27 +982,27 @@ export function DashboardPage({
             </CardHeader>
             <CardContent className="space-y-3">
               {aiError && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2 dark:bg-red-500/10 dark:border-red-500/60 dark:text-red-100">
                   {aiError}
                 </div>
               )}
               <div
                 className={`min-h-[64px] text-sm whitespace-pre-wrap leading-snug rounded-md px-3 py-2 border ${
                   aiLoading
-                    ? 'border-blue-50 bg-blue-50 animate-pulse text-gray-800'
-                    : 'border-blue-200 bg-white text-gray-900'
+                    ? 'border-blue-50 bg-blue-50 animate-pulse text-gray-800 dark:border-blue-900/30 dark:bg-blue-900/30 dark:text-blue-100'
+                    : 'border-blue-200 bg-white text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                 }`}
               >
                 {aiMessage}
               </div>
               {aiUpdatedAt && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
                   Updated: {new Date(aiUpdatedAt).toLocaleString()}
                 </div>
               )}
               {!aiUpdatedAt && !aiLoading && (
-                <div className="text-xs text-gray-500">Tap refresh to get the latest AI summary.</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Tap refresh to get the latest AI summary.</div>
               )}
             </CardContent>
           </Card>
@@ -1021,7 +1026,7 @@ export function DashboardPage({
       {/* Jobs & Incidents Section */}
       <div ref={jobsSectionRef}>
         <Tabs value={jobTab} onValueChange={(val) => setJobTab(val as typeof jobTab)}>
-          <TabsList className="mb-4">
+          <TabsList className="mb-4 bg-muted text-muted-foreground w-fit items-center justify-center rounded-xl p-[3px] flex flex-wrap h-auto dark:bg-slate-800 dark:text-slate-200">
             <TabsTrigger value="all">All Jobs</TabsTrigger>
             <TabsTrigger value="overrunning">Overrunning</TabsTrigger>
             <TabsTrigger value="incidents">Incidents</TabsTrigger>
@@ -1042,11 +1047,11 @@ export function DashboardPage({
           </TabsContent>
 
           <TabsContent value="incidents" className="mt-0">
-            <div className="rounded-lg border bg-white">
-              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap">
+            <div className="rounded-lg border bg-white dark:bg-[#111827] dark:border-slate-700">
+              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap dark:border-slate-700">
                 <div>
                   <h3 className="text-lg font-semibold">Incidents</h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     Synced from JIRA · Active: {incidentsForView.length} · Archived: {archivedIncidentsForView.length}
                   </p>
                 </div>
@@ -1061,7 +1066,7 @@ export function DashboardPage({
               </div>
               <div className="p-4 pt-3">
                 <Tabs value={incidentView} onValueChange={(val) => setIncidentView(val as typeof incidentView)} className="space-y-4">
-                  <TabsList>
+                  <TabsList className="bg-muted text-muted-foreground w-fit items-center justify-center rounded-xl p-[3px] flex flex-wrap h-auto dark:bg-slate-800 dark:text-slate-200">
                     <TabsTrigger value="active">Active ({incidentsForView.length})</TabsTrigger>
                     <TabsTrigger value="archived">Archived ({archivedIncidentsForView.length})</TabsTrigger>
                   </TabsList>
@@ -1185,11 +1190,11 @@ export function DashboardPage({
                       </Table>
                     </div>
                     {incidentsForView.length > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap dark:text-slate-300">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-700">Rows per page</span>
+                          <span className="text-gray-700 dark:text-slate-200">Rows per page</span>
                           <select
-                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-blue-400"
                             value={activePageSize}
                             onChange={(e) => {
                               setActivePageSize(Number(e.target.value));
@@ -1202,7 +1207,7 @@ export function DashboardPage({
                           </select>
                         </div>
                         <div className="flex items-center gap-4">
-                          <span>
+                          <span className="dark:text-slate-200">
                             Showing {activePageItems.length} of {incidentsForView.length} incidents
                           </span>
                           <div className="flex items-center gap-2">
@@ -1337,11 +1342,11 @@ export function DashboardPage({
                       </Table>
                     </div>
                     {archivedIncidentsForView.length > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap dark:text-slate-300">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-700">Rows per page</span>
+                          <span className="text-gray-700 dark:text-slate-200">Rows per page</span>
                           <select
-                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-blue-400"
                             value={archivedPageSize}
                             onChange={(e) => {
                               setArchivedPageSize(Number(e.target.value));
@@ -1354,7 +1359,7 @@ export function DashboardPage({
                           </select>
                         </div>
                         <div className="flex items-center gap-4">
-                          <span>
+                          <span className="dark:text-slate-200">
                             Showing {archivedPageItems.length} of {archivedIncidentsForView.length} incidents
                           </span>
                           <div className="flex items-center gap-2">

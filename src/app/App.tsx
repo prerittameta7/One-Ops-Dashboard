@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Button } from './components/ui/button';
 import { DashboardPage } from './components/DashboardPage';
 import { FilterSidebar } from './components/FilterSidebar';
+import { ThemeToggle } from './components/ThemeToggle';
 import { RefreshCw, Calendar, Loader } from 'lucide-react';
 import { JobData, Bulletin, DOMAINS, Incident, DomainHistoryPoint, DomainIncidentHistoryPoint } from '../types/dashboard';
 import { calculateMetrics, calculatePlatformMetrics } from '../utils/metrics';
@@ -208,7 +209,7 @@ export default function App() {
   const platformMetrics = calculatePlatformMetrics(currentJobs);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-slate-100">
       <Toaster position="top-right" />
       
       {/* Header */}
@@ -249,7 +250,7 @@ export default function App() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="h-10 rounded-xl border border-white/50 bg-white text-slate-900 shadow-sm transition hover:bg-slate-100"
+                    className="h-10 rounded-xl border border-white/50 bg-white text-slate-900 shadow-sm transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                     onClick={() => setIsFilterOpen(true)}
                   >
                     <Calendar className="mr-2 h-4 w-4" />
@@ -259,7 +260,7 @@ export default function App() {
                     onClick={handleRefresh}
                     disabled={isLoading}
                     size="sm"
-                    className="h-10 rounded-xl border border-emerald-300/70 bg-emerald-400 text-slate-900 shadow-sm transition hover:bg-emerald-300 active:bg-emerald-500"
+                    className="h-10 rounded-xl border border-blue-600 bg-blue-600 text-white shadow-sm transition hover:bg-blue-500 active:bg-blue-700 dark:border-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white"
                   >
                     {isLoading ? (
                       <Loader className="mr-2 h-4 w-4 animate-spin" />
@@ -278,14 +279,17 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-6 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6 flex-wrap h-auto">
-            <TabsTrigger value="all">All Domains</TabsTrigger>
-            {DOMAINS.map(domain => (
-              <TabsTrigger key={domain} value={domain.toLowerCase()}>
-                {domain}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <TabsList className="flex-wrap h-auto mb-0">
+              <TabsTrigger value="all">All Domains</TabsTrigger>
+              {DOMAINS.map(domain => (
+                <TabsTrigger key={domain} value={domain.toLowerCase()}>
+                  {domain}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <ThemeToggle />
+          </div>
 
           <TabsContent value="all" className="mt-0">
             <DashboardPage

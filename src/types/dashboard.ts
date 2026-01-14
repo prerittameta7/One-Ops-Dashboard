@@ -9,7 +9,7 @@ export interface JobData {
   parent_pipeline: string;
   medallion_layer: string | null;
   table_type: string | null;
-  job_status: 'SUCCESS' | 'FAILED' | 'RUNNING' | 'PENDING' | 'QUEUED' | 'UNKNOWN';
+  job_status: 'SUCCESS' | 'FAILED' | 'RUNNING' | 'PENDING' | 'QUEUED' | 'SKIPPED' | 'UPSTREAM_FAILED' | 'UNKNOWN';
   job_start_time_utc: string;
   job_end_time_utc: string;
   duration_secs: number | null;
@@ -32,6 +32,8 @@ export interface DashboardMetrics {
   runningJobs: number;
   pendingJobs: number;
   queuedJobs: number;
+  skippedJobs: number;
+  upstreamFailedJobs: number;
   unknownJobs: number;
   overrunningJobs: number;
   incidents: number;
@@ -44,6 +46,8 @@ export interface PlatformMetrics {
   running: number;
   pending: number;
   queued: number;
+  skipped: number;
+  upstreamFailed: number;
   unknown: number;
 }
 

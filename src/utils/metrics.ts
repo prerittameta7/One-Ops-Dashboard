@@ -31,6 +31,8 @@ export function calculateMetrics(jobs: JobData[]): DashboardMetrics {
     runningJobs: 0,
     pendingJobs: 0,
     queuedJobs: 0,
+    skippedJobs: 0,
+    upstreamFailedJobs: 0,
     unknownJobs: 0,
     overrunningJobs: 0,
     incidents: 3, // Dummy number as requested
@@ -54,6 +56,12 @@ export function calculateMetrics(jobs: JobData[]): DashboardMetrics {
         break;
       case 'QUEUED':
         metrics.queuedJobs++;
+        break;
+      case 'SKIPPED':
+        metrics.skippedJobs++;
+        break;
+      case 'UPSTREAM_FAILED':
+        metrics.upstreamFailedJobs++;
         break;
       case 'UNKNOWN':
         metrics.unknownJobs++;
@@ -88,6 +96,8 @@ export function calculatePlatformMetrics(jobs: JobData[]): PlatformMetrics[] {
         running: 0,
         pending: 0,
         queued: 0,
+        skipped: 0,
+        upstreamFailed: 0,
         unknown: 0,
       });
     }
@@ -110,6 +120,12 @@ export function calculatePlatformMetrics(jobs: JobData[]): PlatformMetrics[] {
       case 'QUEUED':
         platformData.queued++;
         break;
+      case 'SKIPPED':
+        platformData.skipped++;
+        break;
+      case 'UPSTREAM_FAILED':
+        platformData.upstreamFailed++;
+        break;
       case 'UNKNOWN':
         platformData.unknown++;
         break;
@@ -131,6 +147,10 @@ export function getStatusColor(status: string): string {
       return 'text-yellow-600';
     case 'QUEUED':
       return 'text-orange-600';
+    case 'SKIPPED':
+      return 'text-gray-500';
+    case 'UPSTREAM_FAILED':
+      return 'text-red-600';
     case 'UNKNOWN':
       return 'text-gray-600';
     default:
@@ -150,6 +170,10 @@ export function getStatusBadgeColor(status: string): string {
       return 'bg-yellow-100 text-yellow-800';
     case 'QUEUED':
       return 'bg-orange-100 text-orange-800';
+    case 'SKIPPED':
+      return 'bg-gray-100 text-gray-700';
+    case 'UPSTREAM_FAILED':
+      return 'bg-red-100 text-red-800';
     case 'UNKNOWN':
       return 'bg-gray-100 text-gray-800';
     default:

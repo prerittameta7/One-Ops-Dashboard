@@ -8,7 +8,7 @@ interface PlatformChartProps {
 
 export function PlatformChart({ data }: PlatformChartProps) {
   return (
-    <Card>
+    <Card className="bg-white dark:bg-[#111827] dark:border-slate-700">
       <CardHeader>
         <CardTitle>Job Status by Platform</CardTitle>
       </CardHeader>
@@ -18,7 +18,13 @@ export function PlatformChart({ data }: PlatformChartProps) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="platform" />
             <YAxis />
-            <Tooltip />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--card)',
+                color: 'var(--fg)',
+                border: `1px solid var(--border)`,
+              }}
+            />
             <Legend />
             <Bar dataKey="success" fill="#10b981" name="Success" />
             <Bar dataKey="failed" fill="#ef4444" name="Failed" />
