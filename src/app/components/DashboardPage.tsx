@@ -952,13 +952,55 @@ export function DashboardPage({
               })()
             ))}
           </div>
-          <div className="space-y-4 h-full">
-            <CriticalInfoBox
-              bulletins={bulletins}
-              onSave={onSaveBulletin}
-              onDelete={onDeleteBulletin}
-            />
-          </div>
+          <Card className="h-full bg-gradient-to-br from-[#f8fafc] via-[#edf2f7] to-[#ffffff] border border-blue-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-gray-900">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                    <Bot className="h-4 w-4 text-blue-700" />
+                  </span>
+                  AI Ops Agent
+                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+                    Manual
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-blue-300 text-blue-900 hover:bg-blue-50"
+                  onClick={handleAiRefresh}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? 'Running…' : 'Refresh'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {aiError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
+                  {aiError}
+                </div>
+              )}
+              <div
+                className={`min-h-[64px] text-sm whitespace-pre-wrap leading-snug rounded-md px-3 py-2 border ${
+                  aiLoading
+                    ? 'border-blue-50 bg-blue-50 animate-pulse text-gray-800'
+                    : 'border-blue-200 bg-white text-gray-900'
+                }`}
+              >
+                {aiMessage}
+              </div>
+              {aiUpdatedAt && (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  Updated: {new Date(aiUpdatedAt).toLocaleString()}
+                </div>
+              )}
+              {!aiUpdatedAt && !aiLoading && (
+                <div className="text-xs text-gray-500">Tap refresh to get the latest AI summary.</div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -967,55 +1009,13 @@ export function DashboardPage({
         <div className="h-full">
           <PlatformChart data={platformMetrics} />
         </div>
-        <Card className="h-full bg-gradient-to-br from-white via-emerald-50 to-white border border-emerald-100 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-emerald-900">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
-                  <Bot className="h-4 w-4 text-emerald-700" />
-                </span>
-                AI Ops Agent
-                <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
-                  Manual
-                </span>
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-emerald-200 text-emerald-800 hover:bg-emerald-50"
-                onClick={handleAiRefresh}
-                disabled={aiLoading}
-              >
-                {aiLoading ? 'Running…' : 'Refresh'}
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {aiError && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
-                {aiError}
-              </div>
-            )}
-            <div
-              className={`min-h-[64px] text-sm whitespace-pre-wrap leading-snug rounded-md px-3 py-2 border ${
-                aiLoading
-                  ? 'border-emerald-50 bg-emerald-50 animate-pulse text-emerald-700'
-                  : 'border-emerald-100 bg-white text-gray-900'
-              }`}
-            >
-              {aiMessage}
-            </div>
-            {aiUpdatedAt && (
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-                Updated: {new Date(aiUpdatedAt).toLocaleString()}
-              </div>
-            )}
-            {!aiUpdatedAt && !aiLoading && (
-              <div className="text-xs text-gray-500">Tap refresh to get the latest AI summary.</div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-4 h-full">
+          <CriticalInfoBox
+            bulletins={bulletins}
+            onSave={onSaveBulletin}
+            onDelete={onDeleteBulletin}
+          />
+        </div>
       </div>
 
       {/* Jobs & Incidents Section */}

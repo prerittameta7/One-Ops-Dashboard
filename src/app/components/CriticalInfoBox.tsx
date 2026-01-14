@@ -45,7 +45,7 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
   };
 
   return (
-    <Card className="h-full">
+    <Card className="h-full bg-gradient-to-br from-white via-rose-50 to-white border border-rose-100 shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export function CriticalInfoBox({ bulletins, onSave, onDelete }: CriticalInfoBox
           {bulletins.map((bulletin) => (
             <div
               key={bulletin.id}
-              className="p-3 bg-red-50 border border-red-200 rounded-lg group relative"
+              className="p-3 bg-white border border-rose-200 rounded-lg group relative shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
