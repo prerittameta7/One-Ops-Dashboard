@@ -37,15 +37,19 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const INCIDENT_COLORS: Record<string, string> = {
-  New: '#ef4444',
-  Open: '#f97316',
-  Dev: '#3b82f6',
-  'In Progress': '#3b82f6',
-  UAT: '#8b5cf6',
-  Resolved: '#10b981',
-  Done: '#10b981',
-  Closed: '#10b981',
-  Unknown: '#9ca3af',
+  'New': '#9ca3af',
+  'To Do': '#9ca3af',
+  'Blocked': '#ef4444',
+  'Cancelled': '#f59e0b',
+  'Dev': '#34d399',
+  'In Progress': '#34d399',
+  'Working': '#34d399',
+  'In QA': '#6366f1',
+  'UAT': '#6366f1',
+  'Done': '#10b981',
+  'Resolved': '#10b981',
+  'Closed': '#10b981',
+  'Unknown': '#94a3b8',
 };
 
 type TrendPoint = { date: string; healthPct: number | null; failureRate: number };
@@ -60,6 +64,13 @@ interface DomainHealthProps {
   delta: number | null;
   anomaly: boolean;
   trend: TrendPoint[];
+  successJobs: number;
+  failedJobs: number;
+  runningJobs: number;
+  overrunningJobs: number;
+  activeIncidents: number;
+  incidentSummary: string;
+  onScroll: (tab: 'all' | 'overrunning' | 'incidents') => void;
 }
 
 const DomainHealthCard = React.memo(function DomainHealthCard({
@@ -71,7 +82,14 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   health,
   delta,
   anomaly,
-  trend
+  trend,
+  successJobs,
+  failedJobs,
+  runningJobs,
+  overrunningJobs,
+  activeIncidents,
+  incidentSummary,
+  onScroll,
 }: DomainHealthProps) {
   const hasAnimatedRef = useRef(false);
   const hasAnimatedIncidentsRef = useRef(false);
@@ -85,7 +103,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   }, [totalIncidents]);
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
+    <div className="rounded-xl border bg-white p-4 shadow-sm h-full min-h-[320px]">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{label}</h3>
@@ -102,7 +120,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="col-span-1 flex flex-col items-center justify-center">
           <div className="text-xs text-gray-500 mb-2">Job</div>
           {totalJobs === 0 ? (
@@ -145,54 +163,50 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
           <div className="mt-1 text-lg font-semibold">
             {health === null ? '–' : `${health}%`}
           </div>
-          <div className="text-xs text-gray-500">Health</div>
         </div>
 
         <div className="col-span-1 flex flex-col gap-3">
-          <div className="h-6" aria-hidden="true" />
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Incidents</div>
-            {totalIncidents === 0 ? (
-              <div className="text-xs text-gray-500">No incidents</div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <ResponsiveContainer width={80} height={80}>
-                  <PieChart>
-                    <Pie
-                      data={incidentData}
-                      dataKey="value"
-                      innerRadius={24}
-                      outerRadius={36}
-                      stroke="none"
-                      isAnimationActive={!hasAnimatedIncidentsRef.current}
-                    >
-                      {incidentData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                      <RechartsTooltip
-                        content={({ active }) => {
-                          if (!active) return null;
-                          return (
-                            <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
-                              <div className="font-semibold mb-1">Incidents breakdown</div>
-                              {incidentData.map((s) => (
-                                <div key={s.name} className="flex items-center gap-2">
-                                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
-                                  <span className="flex-1">{s.name}</span>
-                                  <span>{s.value}</span>
-                                </div>
-                              ))}
+          <div className="text-xs text-gray-500 mb-1">Incidents</div>
+          {totalIncidents === 0 ? (
+            <div className="text-xs text-gray-500">No incidents</div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <ResponsiveContainer width={80} height={80}>
+                <PieChart>
+                  <Pie
+                    data={incidentData}
+                    dataKey="value"
+                    innerRadius={24}
+                    outerRadius={36}
+                    stroke="none"
+                    isAnimationActive={!hasAnimatedIncidentsRef.current}
+                  >
+                    {incidentData.map((entry, index) => (
+                      <Cell key={index} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip
+                    content={({ active }) => {
+                      if (!active) return null;
+                      return (
+                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
+                          <div className="font-semibold mb-1">Incidents breakdown</div>
+                          {incidentData.map((s) => (
+                            <div key={s.name} className="flex items-center gap-2">
+                              <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                              <span className="flex-1">{s.name}</span>
+                              <span>{s.value}</span>
                             </div>
-                          );
-                        }}
-                      />
-                  </PieChart>
-                </ResponsiveContainer>
-                <span className="text-sm font-semibold">{totalIncidents} active</span>
-              </div>
-            )}
-          </div>
+                          ))}
+                        </div>
+                      );
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <span className="text-sm font-semibold">{totalIncidents} active</span>
+            </div>
+          )}
         </div>
 
         <div className="col-span-1">
@@ -215,6 +229,34 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
           )}
         </div>
       </div>
+
+        {/* KPI rail */}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <KPICard
+            title="Job Status"
+            value={totalJobs}
+            icon={CircleCheck}
+            description={`Success: ${successJobs} | Failed: ${failedJobs} | Running: ${runningJobs}`}
+            iconColor="text-blue-600"
+            onClick={() => onScroll('all')}
+          />
+          <KPICard
+            title="Overrunning Jobs"
+            value={overrunningJobs}
+            icon={Clock}
+            description="Jobs exceeding 1.5x avg runtime"
+            iconColor="text-orange-600"
+            onClick={() => onScroll('overrunning')}
+          />
+          <KPICard
+            title="Active Incidents"
+            value={activeIncidents}
+            icon={TriangleAlert}
+            description={incidentSummary || 'Incidents'}
+            iconColor="text-red-600"
+            onClick={() => onScroll('incidents')}
+          />
+        </div>
     </div>
   );
 });
@@ -466,6 +508,21 @@ export function DashboardPage({
   );
 
   const norm = (d: string | null | undefined) => (d || '').toLowerCase();
+  const mapIncidentStatus = (status: string | null | undefined) => {
+    const s = (status || '').toLowerCase();
+    if (s.includes('blocked')) return 'Blocked';
+    if (s.includes('cancel')) return 'Cancelled';
+    if (s.includes('qa')) return 'In QA';
+    if (s.includes('uat')) return 'UAT';
+    if (s.includes('dev')) return 'Dev';
+    if (s.includes('progress') || s.includes('working')) return 'In Progress';
+    if (s.includes('done')) return 'Done';
+    if (s.includes('resolved')) return 'Resolved';
+    if (s.includes('close')) return 'Closed';
+    if (s.includes('todo') || s.includes('to do')) return 'To Do';
+    if (s.includes('new') || s.includes('open')) return 'New';
+    return 'Unknown';
+  };
 
   const groupJobsByDomain = () => {
     const map = new Map<string, JobData[]>();
@@ -524,7 +581,7 @@ export function DashboardPage({
     );
     const counts: Record<string, number> = {};
     domainIncidents.forEach((inc) => {
-      const status = inc.status || 'Unknown';
+      const status = mapIncidentStatus(inc.status);
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
@@ -593,13 +650,37 @@ export function DashboardPage({
 
     const totalJobs = Object.values(statusMix).reduce((a, b) => a + b, 0);
     const totalIncidents = Object.values(incidentMix).reduce((a, b) => a + b, 0);
+    const successJobs = statusMix['SUCCESS'] || 0;
+    const failedJobs = statusMix['FAILED'] || 0;
+    const runningJobs = statusMix['RUNNING'] || 0;
+    const domainJobs = dKey ? domainJobsMap.get(norm(dKey)) || [] : jobs;
+    const overrunningJobsCount = domainJobs.filter(isOverrunning).length;
+    const incidentSummary = Object.keys(incidentMix)
+      .map((k) => `${k}: ${incidentMix[k]}`)
+      .join(' | ');
+
     const trend: TrendPoint[] = historySeries.map((p) => ({
       date: p.date,
       failureRate: p.failureRate,
       healthPct: p.health !== null ? p.health * 100 : null,
     }));
 
-    return { health, statusData, incidentData, totalJobs, totalIncidents, delta, anomaly, trend };
+    return {
+      health,
+      statusData,
+      incidentData,
+      totalJobs,
+      totalIncidents,
+      delta,
+      anomaly,
+      trend,
+      successJobs,
+      failedJobs,
+      runningJobs,
+      overrunningJobs: overrunningJobsCount,
+      activeIncidents: totalIncidents,
+      incidentSummary,
+    };
   };
 
 
@@ -775,74 +856,55 @@ export function DashboardPage({
 
   return (
     <div className="space-y-6">
-      {/* Domain Health */}
+      {/* Domain Health + KPIs + Bulletins (side-by-side on desktop) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Domain Health</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {domainsToRender.map((d) => (
-            (() => {
-              const domainKey = d === '__all__' ? null : d;
-              const view = buildDomainView(domainKey);
-              return (
-                <DomainHealthCard
-                  key={d}
-                  label={d === '__all__' ? 'All Domains' : d}
-                  statusData={view.statusData}
-                  incidentData={view.incidentData}
-                  totalJobs={view.totalJobs}
-                  totalIncidents={view.totalIncidents}
-                  health={view.health}
-                  delta={view.delta}
-                  anomaly={view.anomaly}
-                  trend={view.trend}
-                />
-              );
-            })()
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-start">
+          <div className="h-full">
+            {domainsToRender.map((d) => (
+              (() => {
+                const domainKey = d === '__all__' ? null : d;
+                const view = buildDomainView(domainKey);
+                return (
+                  <DomainHealthCard
+                    key={d}
+                    label={d === '__all__' ? 'All Domains' : d}
+                    statusData={view.statusData}
+                    incidentData={view.incidentData}
+                    totalJobs={view.totalJobs}
+                    totalIncidents={view.totalIncidents}
+                    health={view.health}
+                    delta={view.delta}
+                    anomaly={view.anomaly}
+                    trend={view.trend}
+                    successJobs={view.successJobs}
+                    failedJobs={view.failedJobs}
+                    runningJobs={view.runningJobs}
+                    overrunningJobs={view.overrunningJobs}
+                    activeIncidents={view.activeIncidents}
+                    incidentSummary={view.incidentSummary}
+                    onScroll={scrollToJobs}
+                  />
+                );
+              })()
+            ))}
+          </div>
+          <div className="space-y-4 h-full">
+            <CriticalInfoBox
+              bulletins={bulletins}
+              onSave={onSaveBulletin}
+              onDelete={onDeleteBulletin}
+            />
+          </div>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <KPICard
-          title="Job Status"
-          value={metrics.totalJobs}
-          icon={CircleCheck}
-          description={`Success: ${metrics.successJobs} | Failed: ${metrics.failedJobs} | Running: ${metrics.runningJobs}`}
-          iconColor="text-blue-600"
-          onClick={() => scrollToJobs('all')}
-        />
-        <KPICard
-          title="Overrunning Jobs"
-          value={metrics.overrunningJobs}
-          icon={Clock}
-          description="Jobs exceeding 1.5x avg runtime"
-          iconColor="text-orange-600"
-          onClick={() => scrollToJobs('overrunning')}
-        />
-        <KPICard
-          title="Active Incidents"
-          value={incidentsForView.length}
-          icon={TriangleAlert}
-          description={incidentStatusSummary}
-          iconColor="text-red-600"
-          onClick={() => scrollToJobs('incidents')}
-        />
-      </div>
-
-      {/* Chart and Critical Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <PlatformChart data={platformMetrics} />
-        </div>
+      {/* Platform Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         <div>
-          <CriticalInfoBox
-            bulletins={bulletins}
-            onSave={onSaveBulletin}
-            onDelete={onDeleteBulletin}
-          />
+          <PlatformChart data={platformMetrics} />
         </div>
       </div>
 
