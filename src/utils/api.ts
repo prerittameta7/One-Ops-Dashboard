@@ -26,22 +26,10 @@ export interface IncidentHistoryPoint {
   count: number;
 }
 
-export interface AiDomainSummary {
-  name: string;
-  totalJobs: number;
-  failed: number;
-  pending: number;
-  running: number;
-  queued: number;
-  overrunning: number;
-  incidents: number;
-  anomaly: boolean;
-}
-
-export interface AiSummaryResponse {
-  success: boolean;
-  message: string;
-  updatedAt: string;
+export interface AiIncidentLite {
+  key: string;
+  title: string;
+  status: string | null;
 }
 
 export interface AiDomainSummary {
@@ -53,7 +41,9 @@ export interface AiDomainSummary {
   queued: number;
   overrunning: number;
   incidents: number;
+  topIncidents?: AiIncidentLite[];
   anomaly: boolean;
+  sinceTime?: string | null;
 }
 
 export interface AiSummaryResponse {

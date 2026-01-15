@@ -46,8 +46,8 @@
     "updated": "2026-01-08T09:11:12.193-0800",
     "lastFetched": "2026-01-13T18:15:33.180Z",
     "domain": "AdSales",
-    "archivedAt": null,
-    "archivedBy": null
+    "archivedAt": "2026-01-15T09:55:23.184Z",
+    "archivedBy": "Dashboard User"
   },
   {
     "key": "BIADS-18639",
@@ -100,7 +100,7 @@
     },
     "lastFetched": "2026-01-13T18:15:35.807Z",
     "domain": "AdSales",
-    "archivedAt": null,
-    "archivedBy": null
+    "archivedAt": "2026-01-15T09:55:17.549Z",
+    "archivedBy": "Dashboard User"
   }
 ]

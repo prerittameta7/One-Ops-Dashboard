@@ -19,6 +19,7 @@ export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [history, setHistory] = useState<DomainHistoryPoint[]>([]);
   const [incidentHistory, setIncidentHistory] = useState<DomainIncidentHistoryPoint[]>([]);
+  const [aiMessages, setAiMessages] = useState<Record<string, { message: string; updatedAt: string | null }>>({});
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -190,6 +191,13 @@ export default function App() {
     }
   };
 
+  const handleSaveAiMessage = (key: string, message: string, updatedAt: string | null) => {
+    setAiMessages((prev) => ({
+      ...prev,
+      [key]: { message, updatedAt },
+    }));
+  };
+
   // Filter jobs by domain
   const getJobsByDomain = (domain: string) => {
     if (domain === 'all') return allJobs;
@@ -301,6 +309,8 @@ export default function App() {
               history={history}
               incidentHistory={incidentHistory}
               selectedDate={selectedDate}
+                aiMessageState={aiMessages['all'] || { message: "AI is on deck. Sit back and sip your coffee.", updatedAt: null }}
+                onAiMessage={(message, updatedAt) => handleSaveAiMessage('all', message, updatedAt)}
               onAddIncident={handleAddIncident}
               onRefreshIncidents={handleRefreshIncidents}
               onArchiveIncident={handleArchiveIncident}
@@ -322,6 +332,8 @@ export default function App() {
               history={history}
               incidentHistory={incidentHistory}
               selectedDate={selectedDate}
+                aiMessageState={aiMessages[domain.toLowerCase()] || { message: "AI is on deck. Sit back and sip your coffee.", updatedAt: null }}
+                onAiMessage={(message, updatedAt) => handleSaveAiMessage(domain.toLowerCase(), message, updatedAt)}
                 onAddIncident={handleAddIncident}
                 onRefreshIncidents={handleRefreshIncidents}
                 onArchiveIncident={handleArchiveIncident}

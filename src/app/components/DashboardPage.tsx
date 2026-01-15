@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { format } from 'date-fns';
 import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS, DomainHistoryPoint, DomainIncidentHistoryPoint } from '../../types/dashboard';
 import { KPICard } from './KPICard';
 import { PlatformChart } from './PlatformChart';
@@ -142,6 +143,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                   outerRadius={60}
                   stroke="none"
                   isAnimationActive={!hasAnimatedRef.current}
+                  startAngle={90}
+                  endAngle={-270}
                 >
                   {statusData.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
@@ -187,6 +190,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                     outerRadius={36}
                     stroke="none"
                     isAnimationActive={!hasAnimatedIncidentsRef.current}
+                  startAngle={90}
+                  endAngle={-270}
                   >
                     {incidentData.map((entry, index) => (
                       <Cell key={index} fill={entry.color} />
@@ -276,6 +281,8 @@ interface DashboardPageProps {
   bulletins: Bulletin[];
   incidents: Incident[];
   selectedDate: Date;
+  aiMessageState?: { message: string; updatedAt: string | null };
+  onAiMessage?: (message: string, updatedAt: string | null) => void;
   onAddIncident: (incidentKey: string, domain: string) => Promise<void>;
   onRefreshIncidents: () => Promise<void>;
   onArchiveIncident: (incidentKey: string) => Promise<void>;
@@ -309,6 +316,8 @@ export function DashboardPage({
   selectedDate,
   history,
   incidentHistory,
+  aiMessageState,
+  onAiMessage,
   onAddIncident,
   onRefreshIncidents,
   onArchiveIncident,
@@ -864,10 +873,15 @@ export function DashboardPage({
   const domainsToRender = domain ? [domain] : ['__all__'];
 
   // AI Agent state
-  const [aiMessage, setAiMessage] = useState<string>("Take a chill pill — AI's covering for you!!");
-  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null);
+  const [aiMessage, setAiMessage] = useState<string>(aiMessageState?.message || "AI is on deck. Sit back and sip your coffee.");
+  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(aiMessageState?.updatedAt || null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAiMessage(aiMessageState?.message || "AI is on deck. Sit back and sip your coffee.");
+    setAiUpdatedAt(aiMessageState?.updatedAt || null);
+  }, [aiMessageState, domain]);
 
   const buildAiDomains = () => {
     const list: AiDomainSummary[] = [];
@@ -884,11 +898,25 @@ export function DashboardPage({
       const queued = jobsForDomain.filter((j) => j.job_status === 'QUEUED').length;
       const overrunning = jobsForDomain.filter(isOverrunning).length;
 
+      const earliestIssueStart = (() => {
+        const issueJobs = jobsForDomain.filter((j) => {
+          if (j.job_status === 'FAILED' || j.job_status === 'PENDING') return true;
+          if (isOverrunning(j)) return true;
+          return false;
+        });
+        const times = issueJobs
+          .map((j) => Date.parse(j.job_start_time_utc))
+          .filter((t) => Number.isFinite(t));
+        if (!times.length) return null;
+        const maxTime = Math.max(...times); // most recent issue start
+        return maxTime;
+      })();
+
       // Anomaly based on failure rate vs median in 7d window
       const series = buildHistorySeries(d);
       const anomaly = getAnomalyFlag(series);
 
-      list.push({
+      const entry: AiDomainSummary = {
         name: d,
         totalJobs,
         failed,
@@ -897,9 +925,48 @@ export function DashboardPage({
         queued,
         overrunning,
         incidents: incidentsForDomain.length,
+        topIncidents: incidentsForDomain
+          .slice(0, 3)
+          .map((inc) => ({ key: inc.key, title: inc.title, status: inc.status || null })),
         anomaly,
-      });
+        sinceTime: earliestIssueStart ? format(new Date(earliestIssueStart), 'HH:mm') : null,
+      };
+
+      // Include always when viewing a specific domain; otherwise skip if no significant job signal/anomaly
+      const hasJobSignal = failed > 0 || pending > 3 || overrunning > 1 || anomaly;
+      if (domain) {
+        list.push(entry);
+      } else if (hasJobSignal) {
+        list.push(entry);
+      }
     });
+
+    // If no domains qualified (all clean), send a single aggregate to avoid empty payload
+    if (!domain && list.length === 0) {
+      const failed = jobs.filter((j) => j.job_status === 'FAILED').length;
+      const pending = jobs.filter((j) => j.job_status === 'PENDING').length;
+      const running = jobs.filter((j) => j.job_status === 'RUNNING').length;
+      const queued = jobs.filter((j) => j.job_status === 'QUEUED').length;
+      const overrunning = jobs.filter(isOverrunning).length;
+      list.push({
+        name: 'All',
+        totalJobs: jobs.length,
+        failed,
+        pending,
+        running,
+        queued,
+        overrunning,
+        incidents: incidents.length,
+        topIncidents: incidents.slice(0, 3).map((inc) => ({
+          key: inc.key,
+          title: inc.title,
+          status: inc.status || null,
+        })),
+        anomaly: false,
+        sinceTime: null,
+      });
+    }
+
     return list;
   };
 
@@ -912,6 +979,9 @@ export function DashboardPage({
       const resp = await fetchAiSummary(domainsPayload, dateStr);
       setAiMessage(resp.message);
       setAiUpdatedAt(resp.updatedAt);
+      if (onAiMessage) {
+        onAiMessage(resp.message, resp.updatedAt);
+      }
     } catch (err: any) {
       console.error('AI summary error:', err);
       setAiError(err?.message || 'Failed to fetch AI summary');
@@ -987,7 +1057,7 @@ export function DashboardPage({
                 </div>
               )}
               <div
-                className={`min-h-[64px] text-sm whitespace-pre-wrap leading-snug rounded-md px-3 py-2 border ${
+                className={`min-h-[64px] max-h-48 overflow-y-auto text-sm whitespace-pre-wrap break-words leading-relaxed rounded-md px-3 py-2 border ${
                   aiLoading
                     ? 'border-blue-50 bg-blue-50 animate-pulse text-gray-800 dark:border-blue-900/30 dark:bg-blue-900/30 dark:text-blue-100'
                     : 'border-blue-200 bg-white text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'

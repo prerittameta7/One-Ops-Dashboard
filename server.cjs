@@ -681,24 +681,27 @@ app.post('/api/ai/ops-summary', async (req, res) => {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
     const prompt = `
-You are an SRE/ops assistant. Summarize the current health succinctly.
-Keep to 2 short sentences. If clean: friendly "all good" tone. If issues: highlight domains with failures/pending/overruns/incidents.
-Do NOT include IDs or secrets. Be concise.
+You are an AI Data Ops assistant. Output 2–3 bullets, each <=200 chars.
+- Issue bullets with • : concise, no humor unless very light; use real emoji characters (e.g., ⚠️ ✅) only if they reinforce meaning. Include only domains with issues (failed/pending/overruns or anomaly >1.5x 7d median). Skip clean domains and trivial counts.
+- All-clear: ONE short friendly line; one light emoji allowed there.
+- Mention incidents ONLY when same domain AND clearly related by title/keywords to hot jobs/platforms/datasources.
+- Format: [severity] domain/platform/datasource – what happened – since when (prefer HH:mm if provided; skip date if time not meaningful).
+- Avoid IDs/secrets.
 
 Selected date: ${selectedDate || 'unknown'}
 
-Domains:
-${domains.map(d => `- ${d.name}: jobs total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}`).join('\n')}
+Domains (candidates):
+${domains.map(d => `- ${d.name}: total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}${d.sinceTime ? `, since=${d.sinceTime}` : ''}${d.topIncidents?.length ? `, topIncidents=${d.topIncidents.map(t => `${t.key}:${t.title}(${t.status || '-'})`).join(' | ')}` : ''}`).join('\n')}
     `.trim();
 
     const payload = {
       model,
       messages: [
-        { role: 'system', content: 'You are a concise SRE assistant for an ops dashboard.' },
+        { role: 'system', content: 'You are a concise AI OPS assistant for an One Ops Dashboard for the Data Platform Team.' },
         { role: 'user', content: prompt }
       ],
       temperature: 0.4,
-      max_tokens: 120
+      max_tokens: 220
     };
 
     const aiResp = await fetch('https://api.openai.com/v1/chat/completions', {
