@@ -678,20 +678,20 @@ app.post('/api/ai/ops-summary', async (req, res) => {
       return res.status(400).json({ error: 'domains array is required' });
     }
 
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const model = process.env.OPENAI_MODEL || 'gpt-5-mini';
 
     const prompt = `
 You are an AI Data Ops assistant. Output 2–3 bullets, each <=200 chars.
 - Issue bullets with • : concise, no humor unless very light; use real emoji characters (e.g., ⚠️ ✅) only if they reinforce meaning. Include only domains with issues (failed/pending/overruns or anomaly >1.5x 7d median). Skip clean domains and trivial counts.
 - All-clear: ONE short friendly line; one light emoji allowed there.
-- Mention incidents ONLY when same domain AND clearly related by title/keywords to hot jobs/platforms/datasources.
-- Format: [severity] domain/platform/datasource – what happened – since when (prefer HH:mm if provided; skip date if time not meaningful).
+- Format: [severity] domain/platform/datasource [ time (prefer HH:mm if provided; skip date if time not meaningful) ]: what happened.
+- Incidents: Mention incidents ONLY if they are clearly related by title/keywords to hot jobs/platforms/datasources. Use status and archived flags to judge relevance. Use topJobs (status/platform/pacing/start) to ground the issue facts.
 - Avoid IDs/secrets.
 
 Selected date: ${selectedDate || 'unknown'}
 
 Domains (candidates):
-${domains.map(d => `- ${d.name}: total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}${d.sinceTime ? `, since=${d.sinceTime}` : ''}${d.topIncidents?.length ? `, topIncidents=${d.topIncidents.map(t => `${t.key}:${t.title}(${t.status || '-'})`).join(' | ')}` : ''}`).join('\n')}
+${domains.map(d => `- ${d.name}: total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}${d.sinceTime ? `, since=${d.sinceTime}` : ''}${d.topIncidents?.length ? `, topIncidents=${d.topIncidents.map(t => `${t.key}:${t.title}(status:${t.status || '-'},archived:${t.archived ? 'yes' : 'no'})`).join(' | ')}` : ''}${d.topJobs?.length ? `, topJobs=${d.topJobs.map(t => `${t.name}(status:${t.status},plat:${t.platform},pace:${t.pacingPct ? t.pacingPct.toFixed(0)+'%' : 'n/a'},start:${t.startTime || 'n/a'})`).join(' | ')}` : ''}`).join('\n')}
     `.trim();
 
     const payload = {

@@ -30,6 +30,16 @@ export interface AiIncidentLite {
   key: string;
   title: string;
   status: string | null;
+  archived: boolean;
+}
+
+export interface AiJobLite {
+  name: string;
+  status: string;
+  platform: string;
+  datasource: string | null;
+  pacingPct?: number | null;
+  startTime?: string | null; // HH:mm
 }
 
 export interface AiDomainSummary {
@@ -42,6 +52,7 @@ export interface AiDomainSummary {
   overrunning: number;
   incidents: number;
   topIncidents?: AiIncidentLite[];
+  topJobs?: AiJobLite[];
   anomaly: boolean;
   sinceTime?: string | null;
 }

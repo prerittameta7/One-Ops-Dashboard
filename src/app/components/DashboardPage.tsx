@@ -166,6 +166,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                         </div>
                       );
                     }}
+                    wrapperStyle={{ transform: 'translate(120px, 110px)' }}
+                    offset={10}
                   />
               </PieChart>
             </ResponsiveContainer>
@@ -213,6 +215,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                         </div>
                       );
                     }}
+                    wrapperStyle={{ transform: 'translate(80px, 60px)' }}
+                    offset={10}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -896,12 +900,12 @@ export function DashboardPage({
       const pending = jobsForDomain.filter((j) => j.job_status === 'PENDING').length;
       const running = jobsForDomain.filter((j) => j.job_status === 'RUNNING').length;
       const queued = jobsForDomain.filter((j) => j.job_status === 'QUEUED').length;
-      const overrunning = jobsForDomain.filter(isOverrunning).length;
+      const overrunning = jobsForDomain.filter((j) => isOverrunning(j) && j.job_status !== 'SUCCESS').length;
 
       const earliestIssueStart = (() => {
         const issueJobs = jobsForDomain.filter((j) => {
           if (j.job_status === 'FAILED' || j.job_status === 'PENDING') return true;
-          if (isOverrunning(j)) return true;
+          if (isOverrunning(j) && j.job_status !== 'SUCCESS') return true;
           return false;
         });
         const times = issueJobs
@@ -916,6 +920,29 @@ export function DashboardPage({
       const series = buildHistorySeries(d);
       const anomaly = getAnomalyFlag(series);
 
+      const scoredJobs = jobsForDomain
+        .map((j) => {
+          const eff = getEffectiveDurationSecs(j);
+          const pct = j.avg_duration_secs && eff !== null ? (eff / j.avg_duration_secs) * 100 : null;
+          let score = 0;
+          if (j.job_status === 'FAILED') score = 3;
+          else if (isOverrunning(j) && j.job_status !== 'SUCCESS') score = 2;
+          else if (j.job_status === 'PENDING') score = 1;
+          return {
+            name: j.job_name,
+            status: j.job_status,
+            platform: j.job_platform,
+            datasource: j.datasource_name || null,
+            pacingPct: pct,
+            startTime: j.job_start_time_utc ? format(new Date(j.job_start_time_utc), 'HH:mm') : null,
+            score,
+          };
+        })
+        .filter((j) => j.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(({ score, ...rest }) => rest);
+
       const entry: AiDomainSummary = {
         name: d,
         totalJobs,
@@ -927,13 +954,19 @@ export function DashboardPage({
         incidents: incidentsForDomain.length,
         topIncidents: incidentsForDomain
           .slice(0, 3)
-          .map((inc) => ({ key: inc.key, title: inc.title, status: inc.status || null })),
+          .map((inc) => ({
+            key: inc.key,
+            title: inc.title,
+            status: inc.status || null,
+            archived: Boolean(inc.archivedAt),
+          })),
+        topJobs: scoredJobs,
         anomaly,
         sinceTime: earliestIssueStart ? format(new Date(earliestIssueStart), 'HH:mm') : null,
       };
 
-      // Include always when viewing a specific domain; otherwise skip if no significant job signal/anomaly
-      const hasJobSignal = failed > 0 || pending > 3 || overrunning > 1 || anomaly;
+      // Include always when viewing a specific domain; otherwise include if there is any job signal/anomaly
+      const hasJobSignal = failed > 0 || pending > 0 || overrunning > 0 || anomaly;
       if (domain) {
         list.push(entry);
       } else if (hasJobSignal) {
@@ -947,7 +980,7 @@ export function DashboardPage({
       const pending = jobs.filter((j) => j.job_status === 'PENDING').length;
       const running = jobs.filter((j) => j.job_status === 'RUNNING').length;
       const queued = jobs.filter((j) => j.job_status === 'QUEUED').length;
-      const overrunning = jobs.filter(isOverrunning).length;
+      const overrunning = jobs.filter((j) => isOverrunning(j) && j.job_status !== 'SUCCESS').length;
       list.push({
         name: 'All',
         totalJobs: jobs.length,
@@ -961,6 +994,7 @@ export function DashboardPage({
           key: inc.key,
           title: inc.title,
           status: inc.status || null,
+          archived: Boolean(inc.archivedAt),
         })),
         anomaly: false,
         sinceTime: null,
@@ -1200,7 +1234,7 @@ export function DashboardPage({
                             </TableHead>
                             <TableHead><SortLabel label="Created" sortKey="created" mode="active" /></TableHead>
                             <TableHead><SortLabel label="Updated" sortKey="updated" mode="active" /></TableHead>
-                            <TableHead className="w-72">Last Comment</TableHead>
+                            <TableHead className="w-[520px]">Last Comment</TableHead>
                             <TableHead className="w-28 text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1225,21 +1259,23 @@ export function DashboardPage({
                                     {incident.key}
                                   </a>
                                 </TableCell>
-                                <TableCell className="max-w-md">{incident.title}</TableCell>
+                                <TableCell className="max-w-md break-words whitespace-normal !whitespace-pre-wrap">{incident.title}</TableCell>
                                 <TableCell>{incident.issueType}</TableCell>
                                 <TableCell>
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadgeClass(incident.status)}`}>
                                     {incident.status}
                                   </span>
                                 </TableCell>
-                                <TableCell>{incident.assignee || '-'}</TableCell>
-                                <TableCell>{incident.reporter || '-'}</TableCell>
-                                <TableCell>{incident.created ? new Date(incident.created).toLocaleString() : '-'}</TableCell>
-                                <TableCell>{incident.updated ? new Date(incident.updated).toLocaleString() : '-'}</TableCell>
-                                <TableCell className="whitespace-pre-wrap break-words max-w-xl">
-                                  {incident.lastComment?.body
-                                    ? `${incident.lastComment.author ? incident.lastComment.author + ': ' : ''}${incident.lastComment.body}`
-                                    : '-'}
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.assignee || '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.reporter || '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.created ? new Date(incident.created).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.updated ? new Date(incident.updated).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="whitespace-pre-wrap break-words max-w-4xl">
+                                  <div className="max-h-32 overflow-y-auto pr-1">
+                                    {incident.lastComment?.body
+                                      ? `${incident.lastComment.author ? incident.lastComment.author + ': ' : ''}${incident.lastComment.body}`
+                                      : '-'}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <Button
@@ -1379,14 +1415,14 @@ export function DashboardPage({
                                     {incident.key}
                                   </a>
                                 </TableCell>
-                                <TableCell className="max-w-lg">{incident.title}</TableCell>
+                                <TableCell className="max-w-lg break-words whitespace-normal !whitespace-pre-wrap">{incident.title}</TableCell>
                                 <TableCell>
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadgeClass(incident.status)}`}>
                                     {incident.status}
                                   </span>
                                 </TableCell>
-                                <TableCell>{incident.archivedAt ? new Date(incident.archivedAt).toLocaleString() : '-'}</TableCell>
-                                <TableCell>{incident.archivedBy || 'Dashboard'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.archivedAt ? new Date(incident.archivedAt).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.archivedBy || 'Dashboard'}</TableCell>
                                 <TableCell className="text-right space-x-2">
                                   <Button
                                     variant="outline"

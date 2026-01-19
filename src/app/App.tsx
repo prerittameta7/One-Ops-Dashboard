@@ -309,7 +309,7 @@ export default function App() {
               history={history}
               incidentHistory={incidentHistory}
               selectedDate={selectedDate}
-                aiMessageState={aiMessages['all'] || { message: "AI is on deck. Sit back and sip your coffee.", updatedAt: null }}
+                aiMessageState={aiMessages['all'] || { message: "AI is on deck. Sit back and sip your coffee ☕ ", updatedAt: null }}
                 onAiMessage={(message, updatedAt) => handleSaveAiMessage('all', message, updatedAt)}
               onAddIncident={handleAddIncident}
               onRefreshIncidents={handleRefreshIncidents}
