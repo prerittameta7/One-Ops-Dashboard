@@ -1306,7 +1306,10 @@ export function DashboardPage({
                     const duration = formatDurationShort(row.duration_secs);
 
                     return (
-                      <div key={row.validation_id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+                      <div
+                        key={`${row.validation_id}-${row.facet_value ?? 'null'}-${row.reporting_date_utc}`}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-sm font-semibold text-gray-900 dark:text-slate-100">

@@ -361,6 +361,10 @@ app.get('/api/validation-status', async (req, res) => {
     }
 
     const cacheKey = makeCacheKey(selectedDate, domain);
+    if (refresh) {
+      validationCache.delete(cacheKey);
+    }
+
     if (!refresh && validationCache.has(cacheKey)) {
       const cached = validationCache.get(cacheKey);
       return res.json({
