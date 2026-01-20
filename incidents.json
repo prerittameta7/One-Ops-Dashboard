@@ -7,45 +7,13 @@
     "assignee": "Preritt Ameta",
     "reporter": "Mihir Modi",
     "created": "2026-01-12T21:48:42.215-0800",
-    "updated": "2026-01-13T10:12:38.230-0800",
+    "updated": "2026-01-14T05:22:26.173-0800",
     "lastComment": {
       "author": "Preritt Ameta",
-      "body": "Re-instated the permissions and configured the OAuth redirect path on the the slack app and sent for the approval to the slack admin. currently under review."
+      "body": "Hi  @preritt.ameta Thank you for reaching out. All applications go through a thorough review and approvals process that may involve legal, Infosec, privacy, and Slack admin teams. Once the reviews and approvals are completed, the apps will become live. The user that submitted the app requests will be updated in Slack directly with the status updates. The screenshot below shows where to locate these updates if you are having difficulty finding them David Pollard    11:57 PM I see these have both entered the initial review process, so there should be updates on both apps with the confirmation. If there is any additional information needed, you'll be notified. For most applications that do not have extensive permission scopes, the reviews are completed in 1-2 days."
     },
-    "lastFetched": "2026-01-13T18:15:57.623Z",
+    "lastFetched": "2026-01-15T16:29:16.030Z",
     "domain": "FoxOne",
-    "archivedAt": null,
-    "archivedBy": null
-  },
-  {
-    "key": "BIADS-19337",
-    "title": "Foxone Subscription - Snowflake Task Timeout issue",
-    "status": "Done",
-    "issueType": "Bug",
-    "assignee": "Karthik Basavanahalli Manjunath",
-    "reporter": "Preritt Ameta",
-    "created": "2025-12-15T08:10:28.938-0800",
-    "updated": "2026-01-07T10:37:44.508-0800",
-    "lastComment": {
-      "author": "Preritt Ameta",
-      "body": "As per the new runtime for Amazon which is under 9 mins. We’re good to close this for Amazon Snowflake Task"
-    },
-    "lastFetched": "2026-01-13T18:15:32.061Z",
-    "domain": "FoxOne",
-    "archivedAt": null,
-    "archivedBy": null
-  },
-  {
-    "key": "BIADS-19639",
-    "title": "Failure in adsales_digital_dade_validation DAG",
-    "status": "Done",
-    "issueType": "Bug",
-    "assignee": "Noor Mahammad Nalband",
-    "reporter": "Rishabh Soni",
-    "created": "2026-01-08T06:09:56.038-0800",
-    "updated": "2026-01-08T09:11:12.193-0800",
-    "lastFetched": "2026-01-13T18:15:33.180Z",
-    "domain": "AdSales",
     "archivedAt": null,
     "archivedBy": null
   },
@@ -62,7 +30,7 @@
       "author": "Shelby Jennings",
       "body": "Closing as duplicate to"
     },
-    "lastFetched": "2026-01-13T18:15:33.561Z",
+    "lastFetched": "2026-01-15T16:29:17.318Z",
     "domain": "AdSales",
     "archivedAt": null,
     "archivedBy": null
@@ -75,15 +43,65 @@
     "assignee": "Kate Savoca",
     "reporter": "Kate Savoca",
     "created": "2025-08-06T08:11:41.018-0700",
-    "updated": "2026-01-11T23:08:10.189-0800",
+    "updated": "2026-01-14T13:21:00.901-0800",
     "lastComment": {
       "author": "Shubham Nasare",
       "body": "I have tested gsheets overriding for highlights, business articles and top videos. Confirming that it is working as expected. Test results uploaded here:"
     },
-    "lastFetched": "2026-01-13T18:15:34.666Z",
+    "lastFetched": "2026-01-15T16:29:18.611Z",
     "domain": "Engagement",
     "archivedAt": null,
     "archivedBy": null
+  },
+  {
+    "key": "DTCDATA-398",
+    "title": "[PROD] mulesoft_title_landing_consumption dbt failure due to invalid boolean format in upstream payload",
+    "status": "Done",
+    "issueType": "Bug",
+    "assignee": "Preritt Ameta",
+    "reporter": "svc_montecarlo_jira",
+    "created": "2026-01-14T00:45:44.868-0800",
+    "updated": "2026-01-14T08:08:13.495-0800",
+    "lastComment": {
+      "author": "Preritt Ameta",
+      "body": "This is fixed by MuleSoft Team"
+    },
+    "lastFetched": "2026-01-15T13:27:47.676Z",
+    "domain": "FoxOne",
+    "archivedAt": "2026-01-15T14:24:12.112Z",
+    "archivedBy": "Dashboard User"
+  },
+  {
+    "key": "BIADS-19337",
+    "title": "Foxone Subscription - Snowflake Task Timeout issue",
+    "status": "Done",
+    "issueType": "Bug",
+    "assignee": "Karthik Basavanahalli Manjunath",
+    "reporter": "Preritt Ameta",
+    "created": "2025-12-15T08:10:28.938-0800",
+    "updated": "2026-01-07T10:37:44.508-0800",
+    "lastComment": {
+      "author": "Preritt Ameta",
+      "body": "As per the new runtime for Amazon which is under 9 mins. We’re good to close this for Amazon Snowflake Task"
+    },
+    "lastFetched": "2026-01-15T13:27:50.043Z",
+    "domain": "FoxOne",
+    "archivedAt": "2026-01-15T14:24:07.091Z",
+    "archivedBy": "Dashboard User"
+  },
+  {
+    "key": "BIADS-19639",
+    "title": "Failure in adsales_digital_dade_validation DAG",
+    "status": "Done",
+    "issueType": "Bug",
+    "assignee": "Noor Mahammad Nalband",
+    "reporter": "Rishabh Soni",
+    "created": "2026-01-08T06:09:56.038-0800",
+    "updated": "2026-01-08T09:11:12.193-0800",
+    "lastFetched": "2026-01-13T18:15:33.180Z",
+    "domain": "AdSales",
+    "archivedAt": "2026-01-15T09:55:23.184Z",
+    "archivedBy": "Dashboard User"
   },
   {
     "key": "BIADS-19220",
@@ -100,7 +118,7 @@
     },
     "lastFetched": "2026-01-13T18:15:35.807Z",
     "domain": "AdSales",
-    "archivedAt": null,
-    "archivedBy": null
+    "archivedAt": "2026-01-15T09:55:17.549Z",
+    "archivedBy": "Dashboard User"
   }
 ]

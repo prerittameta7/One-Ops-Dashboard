@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS, DomainHistoryPoint, DomainIncidentHistoryPoint } from '../../types/dashboard';
+import { format } from 'date-fns';
+import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS, DomainHistoryPoint, DomainIncidentHistoryPoint, ValidationStatusRecord } from '../../types/dashboard';
 import { KPICard } from './KPICard';
 import { PlatformChart } from './PlatformChart';
 import { CriticalInfoBox } from './CriticalInfoBox';
 import { JobsTable } from './JobsTable';
-import { CircleCheck, Clock, TriangleAlert, Trash2, Filter } from 'lucide-react';
+import { CircleCheck, Clock, TriangleAlert, Trash2, Filter, Bot } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { getEffectiveDurationSecs } from '../../utils/metrics';
@@ -24,6 +25,8 @@ import {
 } from './ui/alert-dialog';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { fetchAiSummary, AiDomainSummary, fetchValidationStatus } from '../../utils/api';
 
 const JIRA_HOST = (import.meta as any).env?.VITE_JIRA_HOST || 'teamfox.atlassian.net';
 
@@ -33,20 +36,81 @@ const STATUS_COLORS: Record<string, string> = {
   RUNNING: '#3b82f6',
   PENDING: '#eab308',
   QUEUED: '#f97316',
+  SKIPPED: '#9ca3af',
+  UPSTREAM_FAILED: '#ef4444',
   UNKNOWN: '#6b7280',
 };
 
 const INCIDENT_COLORS: Record<string, string> = {
-  New: '#ef4444',
-  Open: '#f97316',
-  Dev: '#3b82f6',
-  'In Progress': '#3b82f6',
-  UAT: '#8b5cf6',
-  Resolved: '#10b981',
-  Done: '#10b981',
-  Closed: '#10b981',
-  Unknown: '#9ca3af',
+  'New': '#9ca3af',
+  'To Do': '#9ca3af',
+  'Blocked': '#ef4444',
+  'Cancelled': '#f59e0b',
+  'Dev': '#34d399',
+  'In Progress': '#34d399',
+  'Working': '#34d399',
+  'In QA': '#6366f1',
+  'UAT': '#6366f1',
+  'Done': '#10b981',
+  'Resolved': '#10b981',
+  'Closed': '#10b981',
+  'Unknown': '#94a3b8',
 };
+
+type ValidationMetric = {
+  key: string;
+  variancePct: number;
+  sourceValue?: number | null;
+  targetValue?: number | null;
+};
+
+function parseValidationMetrics(metricsJson: string | null): ValidationMetric[] {
+  if (!metricsJson) return [];
+  try {
+    const parsed = JSON.parse(metricsJson);
+    if (!parsed || typeof parsed !== 'object') return [];
+    return Object.entries(parsed)
+      .map(([key, value]) => {
+        const record = value as { variance_percent?: number; source_value?: number; target_value?: number };
+        return {
+          key,
+          variancePct: typeof record.variance_percent === 'number' ? record.variance_percent : 0,
+          sourceValue: typeof record.source_value === 'number' ? record.source_value : null,
+          targetValue: typeof record.target_value === 'number' ? record.target_value : null,
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.variancePct))
+      .sort((a, b) => Math.abs(b.variancePct) - Math.abs(a.variancePct));
+  } catch (error) {
+    return [];
+  }
+}
+
+function parseValidationKpis(kpisJson: string | null): string[] {
+  if (!kpisJson) return [];
+  try {
+    const parsed = JSON.parse(kpisJson);
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === 'string') : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function formatValidationTime(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return format(date, 'HH:mm');
+}
+
+function formatDurationShort(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds)) return null;
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
 
 type TrendPoint = { date: string; healthPct: number | null; failureRate: number };
 
@@ -60,6 +124,13 @@ interface DomainHealthProps {
   delta: number | null;
   anomaly: boolean;
   trend: TrendPoint[];
+  successJobs: number;
+  failedJobs: number;
+  runningJobs: number;
+  overrunningJobs: number;
+  activeIncidents: number;
+  incidentSummary: string;
+  onScroll: (tab: 'all' | 'overrunning' | 'incidents') => void;
 }
 
 const DomainHealthCard = React.memo(function DomainHealthCard({
@@ -71,8 +142,18 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   health,
   delta,
   anomaly,
-  trend
+  trend,
+  successJobs,
+  failedJobs,
+  runningJobs,
+  overrunningJobs,
+  activeIncidents,
+  incidentSummary,
+  onScroll,
 }: DomainHealthProps) {
+  const pendingJobs = statusData.find((s) => s.name === 'PENDING')?.value || 0;
+  const skippedJobs = statusData.find((s) => s.name === 'SKIPPED')?.value || 0;
+  const upstreamFailedJobs = statusData.find((s) => s.name === 'UPSTREAM_FAILED')?.value || 0;
   const hasAnimatedRef = useRef(false);
   const hasAnimatedIncidentsRef = useRef(false);
 
@@ -85,7 +166,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
   }, [totalIncidents]);
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
+    <div className="rounded-xl border bg-white p-4 shadow-sm h-full min-h-[320px] dark:bg-[#111827] dark:border-slate-700">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">{label}</h3>
@@ -102,7 +183,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="col-span-1 flex flex-col items-center justify-center">
           <div className="text-xs text-gray-500 mb-2">Job</div>
           {totalJobs === 0 ? (
@@ -117,6 +198,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                   outerRadius={60}
                   stroke="none"
                   isAnimationActive={!hasAnimatedRef.current}
+                  startAngle={90}
+                  endAngle={-270}
                 >
                   {statusData.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
@@ -126,7 +209,7 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                     content={({ active }) => {
                       if (!active) return null;
                       return (
-                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
+                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
                           <div className="font-semibold mb-1">Status breakdown</div>
                           {statusData.map((s) => (
                             <div key={s.name} className="flex items-center gap-2">
@@ -138,6 +221,8 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
                         </div>
                       );
                     }}
+                    wrapperStyle={{ transform: 'translate(120px, 110px)' }}
+                    offset={10}
                   />
               </PieChart>
             </ResponsiveContainer>
@@ -145,54 +230,54 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
           <div className="mt-1 text-lg font-semibold">
             {health === null ? '–' : `${health}%`}
           </div>
-          <div className="text-xs text-gray-500">Health</div>
         </div>
 
         <div className="col-span-1 flex flex-col gap-3">
-          <div className="h-6" aria-hidden="true" />
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Incidents</div>
-            {totalIncidents === 0 ? (
-              <div className="text-xs text-gray-500">No incidents</div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <ResponsiveContainer width={80} height={80}>
-                  <PieChart>
-                    <Pie
-                      data={incidentData}
-                      dataKey="value"
-                      innerRadius={24}
-                      outerRadius={36}
-                      stroke="none"
-                      isAnimationActive={!hasAnimatedIncidentsRef.current}
-                    >
-                      {incidentData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                      <RechartsTooltip
-                        content={({ active }) => {
-                          if (!active) return null;
-                          return (
-                            <div className="rounded-md border bg-white p-2 shadow-sm text-xs">
-                              <div className="font-semibold mb-1">Incidents breakdown</div>
-                              {incidentData.map((s) => (
-                                <div key={s.name} className="flex items-center gap-2">
-                                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
-                                  <span className="flex-1">{s.name}</span>
-                                  <span>{s.value}</span>
-                                </div>
-                              ))}
+          <div className="text-xs text-gray-500 mb-1">Incidents</div>
+          {totalIncidents === 0 ? (
+            <div className="text-xs text-gray-500">No incidents</div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <ResponsiveContainer width={80} height={80}>
+                <PieChart>
+                  <Pie
+                    data={incidentData}
+                    dataKey="value"
+                    innerRadius={24}
+                    outerRadius={36}
+                    stroke="none"
+                    isAnimationActive={!hasAnimatedIncidentsRef.current}
+                  startAngle={90}
+                  endAngle={-270}
+                  >
+                    {incidentData.map((entry, index) => (
+                      <Cell key={index} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip
+                    content={({ active }) => {
+                      if (!active) return null;
+                      return (
+                        <div className="rounded-md border bg-white p-2 shadow-sm text-xs dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
+                          <div className="font-semibold mb-1">Incidents breakdown</div>
+                          {incidentData.map((s) => (
+                            <div key={s.name} className="flex items-center gap-2">
+                              <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                              <span className="flex-1">{s.name}</span>
+                              <span>{s.value}</span>
                             </div>
-                          );
-                        }}
-                      />
-                  </PieChart>
-                </ResponsiveContainer>
-                <span className="text-sm font-semibold">{totalIncidents} active</span>
-              </div>
-            )}
-          </div>
+                          ))}
+                        </div>
+                      );
+                    }}
+                    wrapperStyle={{ transform: 'translate(80px, 60px)' }}
+                    offset={10}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <span className="text-sm font-semibold">{totalIncidents} active</span>
+            </div>
+          )}
         </div>
 
         <div className="col-span-1">
@@ -215,6 +300,34 @@ const DomainHealthCard = React.memo(function DomainHealthCard({
           )}
         </div>
       </div>
+
+        {/* KPI rail */}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <KPICard
+            title="Job Status"
+            value={totalJobs}
+            icon={CircleCheck}
+            description={`Success: ${successJobs} | Failed: ${failedJobs} | Running: ${runningJobs} | Pending: ${pendingJobs} | Skipped: ${skippedJobs} | Upstream failed: ${upstreamFailedJobs}`}
+            iconColor="text-blue-600"
+            onClick={() => onScroll('all')}
+          />
+          <KPICard
+            title="Overrunning Jobs"
+            value={overrunningJobs}
+            icon={Clock}
+            description="Jobs exceeding 1.5x avg runtime"
+            iconColor="text-orange-600"
+            onClick={() => onScroll('overrunning')}
+          />
+          <KPICard
+            title="Active Incidents"
+            value={activeIncidents}
+            icon={TriangleAlert}
+            description={incidentSummary || 'Incidents'}
+            iconColor="text-red-600"
+            onClick={() => onScroll('incidents')}
+          />
+        </div>
     </div>
   );
 });
@@ -226,6 +339,9 @@ interface DashboardPageProps {
   platformMetrics: PlatformMetrics[];
   bulletins: Bulletin[];
   incidents: Incident[];
+  selectedDate: Date;
+  aiMessageState?: { message: string; updatedAt: string | null };
+  onAiMessage?: (message: string, updatedAt: string | null) => void;
   onAddIncident: (incidentKey: string, domain: string) => Promise<void>;
   onRefreshIncidents: () => Promise<void>;
   onArchiveIncident: (incidentKey: string) => Promise<void>;
@@ -256,8 +372,11 @@ export function DashboardPage({
   platformMetrics,
   bulletins,
   incidents,
+  selectedDate,
   history,
   incidentHistory,
+  aiMessageState,
+  onAiMessage,
   onAddIncident,
   onRefreshIncidents,
   onArchiveIncident,
@@ -296,6 +415,10 @@ export function DashboardPage({
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [reporterFilter, setReporterFilter] = useState('all');
+  const [validationRows, setValidationRows] = useState<ValidationStatusRecord[]>([]);
+  const [isValidationLoading, setIsValidationLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationUpdatedAt, setValidationUpdatedAt] = useState<string | null>(null);
 
   const activeIncidents = useMemo(
     () => incidents.filter((incident) => !incident.archivedAt),
@@ -451,6 +574,38 @@ export function DashboardPage({
     return orderedStatuses.map((status) => `${status}: ${counts[status]}`).join(' | ');
   }, [incidentsForView]);
 
+  const loadValidationStatus = async (forceRefresh = false) => {
+    if (domain !== 'AdTech') return;
+    setIsValidationLoading(true);
+    setValidationError(null);
+    try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const response = await fetchValidationStatus({
+        selectedDate: dateStr,
+        domain,
+        refresh: forceRefresh,
+      });
+      setValidationRows(response.data || []);
+      setValidationUpdatedAt(new Date().toISOString());
+    } catch (error: any) {
+      console.error('Error loading validation status:', error);
+      setValidationRows([]);
+      setValidationError(error?.message || 'Failed to load validation status');
+    } finally {
+      setIsValidationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (domain !== 'AdTech') {
+      setValidationRows([]);
+      setValidationError(null);
+      setValidationUpdatedAt(null);
+      return;
+    }
+    loadValidationStatus();
+  }, [domain, selectedDate]);
+
   const isOverrunning = (job: JobData) => {
     const effectiveDuration = getEffectiveDurationSecs(job);
     return (
@@ -466,6 +621,21 @@ export function DashboardPage({
   );
 
   const norm = (d: string | null | undefined) => (d || '').toLowerCase();
+  const mapIncidentStatus = (status: string | null | undefined) => {
+    const s = (status || '').toLowerCase();
+    if (s.includes('blocked')) return 'Blocked';
+    if (s.includes('cancel')) return 'Cancelled';
+    if (s.includes('qa')) return 'In QA';
+    if (s.includes('uat')) return 'UAT';
+    if (s.includes('dev')) return 'Dev';
+    if (s.includes('progress') || s.includes('working')) return 'In Progress';
+    if (s.includes('done')) return 'Done';
+    if (s.includes('resolved')) return 'Resolved';
+    if (s.includes('close')) return 'Closed';
+    if (s.includes('todo') || s.includes('to do')) return 'To Do';
+    if (s.includes('new') || s.includes('open')) return 'New';
+    return 'Unknown';
+  };
 
   const groupJobsByDomain = () => {
     const map = new Map<string, JobData[]>();
@@ -524,7 +694,7 @@ export function DashboardPage({
     );
     const counts: Record<string, number> = {};
     domainIncidents.forEach((inc) => {
-      const status = inc.status || 'Unknown';
+      const status = mapIncidentStatus(inc.status);
       counts[status] = (counts[status] || 0) + 1;
     });
     return counts;
@@ -593,13 +763,37 @@ export function DashboardPage({
 
     const totalJobs = Object.values(statusMix).reduce((a, b) => a + b, 0);
     const totalIncidents = Object.values(incidentMix).reduce((a, b) => a + b, 0);
+    const successJobs = statusMix['SUCCESS'] || 0;
+    const failedJobs = statusMix['FAILED'] || 0;
+    const runningJobs = statusMix['RUNNING'] || 0;
+    const domainJobs = dKey ? domainJobsMap.get(norm(dKey)) || [] : jobs;
+    const overrunningJobsCount = domainJobs.filter(isOverrunning).length;
+    const incidentSummary = Object.keys(incidentMix)
+      .map((k) => `${k}: ${incidentMix[k]}`)
+      .join(' | ');
+
     const trend: TrendPoint[] = historySeries.map((p) => ({
       date: p.date,
       failureRate: p.failureRate,
       healthPct: p.health !== null ? p.health * 100 : null,
     }));
 
-    return { health, statusData, incidentData, totalJobs, totalIncidents, delta, anomaly, trend };
+    return {
+      health,
+      statusData,
+      incidentData,
+      totalJobs,
+      totalIncidents,
+      delta,
+      anomaly,
+      trend,
+      successJobs,
+      failedJobs,
+      runningJobs,
+      overrunningJobs: overrunningJobsCount,
+      activeIncidents: totalIncidents,
+      incidentSummary,
+    };
   };
 
 
@@ -773,71 +967,400 @@ export function DashboardPage({
 
   const domainsToRender = domain ? [domain] : ['__all__'];
 
+  // AI Agent state
+  const [aiMessage, setAiMessage] = useState<string>(aiMessageState?.message || "AI is on deck. Sit back and sip your coffee.");
+  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(aiMessageState?.updatedAt || null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAiMessage(aiMessageState?.message || "AI is on deck. Sit back and sip your coffee.");
+    setAiUpdatedAt(aiMessageState?.updatedAt || null);
+  }, [aiMessageState, domain]);
+
+  const buildAiDomains = () => {
+    const list: AiDomainSummary[] = [];
+    const targetDomains = domain ? [domain] : DOMAINS;
+    targetDomains.forEach((d) => {
+      const key = norm(d);
+      const jobsForDomain = domainJobsMap.get(key) || [];
+      const incidentsForDomain = incidents.filter((inc) => norm(inc.domain) === key);
+
+      const totalJobs = jobsForDomain.length;
+      const failed = jobsForDomain.filter((j) => j.job_status === 'FAILED').length;
+      const pending = jobsForDomain.filter((j) => j.job_status === 'PENDING').length;
+      const running = jobsForDomain.filter((j) => j.job_status === 'RUNNING').length;
+      const queued = jobsForDomain.filter((j) => j.job_status === 'QUEUED').length;
+      const overrunning = jobsForDomain.filter((j) => isOverrunning(j) && j.job_status !== 'SUCCESS').length;
+
+      const earliestIssueStart = (() => {
+        const issueJobs = jobsForDomain.filter((j) => {
+          if (j.job_status === 'FAILED' || j.job_status === 'PENDING') return true;
+          if (isOverrunning(j) && j.job_status !== 'SUCCESS') return true;
+          return false;
+        });
+        const times = issueJobs
+          .map((j) => Date.parse(j.job_start_time_utc))
+          .filter((t) => Number.isFinite(t));
+        if (!times.length) return null;
+        const maxTime = Math.max(...times); // most recent issue start
+        return maxTime;
+      })();
+
+      // Anomaly based on failure rate vs median in 7d window
+      const series = buildHistorySeries(d);
+      const anomaly = getAnomalyFlag(series);
+
+      const scoredJobs = jobsForDomain
+        .map((j) => {
+          const eff = getEffectiveDurationSecs(j);
+          const pct = j.avg_duration_secs && eff !== null ? (eff / j.avg_duration_secs) * 100 : null;
+          let score = 0;
+          if (j.job_status === 'FAILED') score = 3;
+          else if (isOverrunning(j) && j.job_status !== 'SUCCESS') score = 2;
+          else if (j.job_status === 'PENDING') score = 1;
+          return {
+            name: j.job_name,
+            status: j.job_status,
+            platform: j.job_platform,
+            datasource: j.datasource_name || null,
+            pacingPct: pct,
+            startTime: j.job_start_time_utc ? format(new Date(j.job_start_time_utc), 'HH:mm') : null,
+            score,
+          };
+        })
+        .filter((j) => j.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(({ score, ...rest }) => rest);
+
+      const validationSummary =
+        d === 'AdTech' && validationRows.length
+          ? validationRows
+              .map((row) => {
+                const status =
+                  row.validation_status === true
+                    ? 'OK'
+                    : row.validation_status === false
+                      ? 'Variance'
+                      : 'Waiting';
+                const metrics = parseValidationMetrics(row.metrics_json);
+                const varianceSummary = metrics.length
+                  ? metrics
+                      .slice(0, 2)
+                      .map((m) => `${m.key} ${Math.abs(m.variancePct).toFixed(2)}%`)
+                      .join(' | ')
+                  : null;
+                return {
+                  report: row.validation_report || row.validation_id,
+                  datasource: row.datasource_name || null,
+                  subdomain: row.subdomain_name || null,
+                  status,
+                  slaMet: row.val_sla_met ?? null,
+                  varianceSummary,
+                  statusText: row.validation_status_text || row.validation_message || null,
+                  slaCutoff: row.sla_cutoff_time_utc || null,
+                };
+              })
+              .sort((a, b) => {
+                const aScore = (a.status === 'Variance' ? 2 : a.status === 'Waiting' ? 1 : 0) + (a.slaMet === false ? 1 : 0);
+                const bScore = (b.status === 'Variance' ? 2 : b.status === 'Waiting' ? 1 : 0) + (b.slaMet === false ? 1 : 0);
+                return bScore - aScore;
+              })
+              .slice(0, 6)
+          : undefined;
+
+      const entry: AiDomainSummary = {
+        name: d,
+        totalJobs,
+        failed,
+        pending,
+        running,
+        queued,
+        overrunning,
+        incidents: incidentsForDomain.length,
+        topIncidents: incidentsForDomain
+          .slice(0, 3)
+          .map((inc) => ({
+            key: inc.key,
+            title: inc.title,
+            status: inc.status || null,
+            archived: Boolean(inc.archivedAt),
+          })),
+        topJobs: scoredJobs,
+        validationReports: validationSummary,
+        anomaly,
+        sinceTime: earliestIssueStart ? format(new Date(earliestIssueStart), 'HH:mm') : null,
+      };
+
+      // Include always when viewing a specific domain; otherwise include if there is any job signal/anomaly
+      const hasJobSignal = failed > 0 || pending > 0 || overrunning > 0 || anomaly;
+      if (domain) {
+        list.push(entry);
+      } else if (hasJobSignal) {
+        list.push(entry);
+      }
+    });
+
+    // If no domains qualified (all clean), send a single aggregate to avoid empty payload
+    if (!domain && list.length === 0) {
+      const failed = jobs.filter((j) => j.job_status === 'FAILED').length;
+      const pending = jobs.filter((j) => j.job_status === 'PENDING').length;
+      const running = jobs.filter((j) => j.job_status === 'RUNNING').length;
+      const queued = jobs.filter((j) => j.job_status === 'QUEUED').length;
+      const overrunning = jobs.filter((j) => isOverrunning(j) && j.job_status !== 'SUCCESS').length;
+      list.push({
+        name: 'All',
+        totalJobs: jobs.length,
+        failed,
+        pending,
+        running,
+        queued,
+        overrunning,
+        incidents: incidents.length,
+        topIncidents: incidents.slice(0, 3).map((inc) => ({
+          key: inc.key,
+          title: inc.title,
+          status: inc.status || null,
+          archived: Boolean(inc.archivedAt),
+        })),
+        anomaly: false,
+        sinceTime: null,
+      });
+    }
+
+    return list;
+  };
+
+  const handleAiRefresh = async () => {
+    try {
+      setAiLoading(true);
+      setAiError(null);
+      const domainsPayload = buildAiDomains();
+      const dateStr = selectedDate ? new Date(selectedDate).toISOString().slice(0, 10) : '';
+      const resp = await fetchAiSummary(domainsPayload, dateStr);
+      setAiMessage(resp.message);
+      setAiUpdatedAt(resp.updatedAt);
+      if (onAiMessage) {
+        onAiMessage(resp.message, resp.updatedAt);
+      }
+    } catch (err: any) {
+      console.error('AI summary error:', err);
+      setAiError(err?.message || 'Failed to fetch AI summary');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Domain Health */}
+      {/* Domain Health + KPIs + Bulletins (side-by-side on desktop) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Domain Health</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {domainsToRender.map((d) => (
-            (() => {
-              const domainKey = d === '__all__' ? null : d;
-              const view = buildDomainView(domainKey);
-              return (
-                <DomainHealthCard
-                  key={d}
-                  label={d === '__all__' ? 'All Domains' : d}
-                  statusData={view.statusData}
-                  incidentData={view.incidentData}
-                  totalJobs={view.totalJobs}
-                  totalIncidents={view.totalIncidents}
-                  health={view.health}
-                  delta={view.delta}
-                  anomaly={view.anomaly}
-                  trend={view.trend}
-                />
-              );
-            })()
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
+          <div className="h-full">
+            {domainsToRender.map((d) => (
+              (() => {
+                const domainKey = d === '__all__' ? null : d;
+                const view = buildDomainView(domainKey);
+                return (
+                  <DomainHealthCard
+                    key={d}
+                    label={d === '__all__' ? 'All Domains' : d}
+                    statusData={view.statusData}
+                    incidentData={view.incidentData}
+                    totalJobs={view.totalJobs}
+                    totalIncidents={view.totalIncidents}
+                    health={view.health}
+                    delta={view.delta}
+                    anomaly={view.anomaly}
+                    trend={view.trend}
+                    successJobs={view.successJobs}
+                    failedJobs={view.failedJobs}
+                    runningJobs={view.runningJobs}
+                    overrunningJobs={view.overrunningJobs}
+                    activeIncidents={view.activeIncidents}
+                    incidentSummary={view.incidentSummary}
+                    onScroll={scrollToJobs}
+                  />
+                );
+              })()
+            ))}
+          </div>
+          <Card className="h-full bg-gradient-to-br from-[#f8fafc] via-[#edf2f7] to-[#ffffff] border border-blue-200 shadow-sm dark:bg-gradient-to-br dark:from-[#0f172a] dark:via-[#111827] dark:to-[#0b1220] dark:border-slate-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-gray-900 dark:text-blue-100">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40">
+                    <Bot className="h-4 w-4 text-blue-700 dark:text-blue-100" />
+                  </span>
+                  AI Ops Agent
+                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
+                    Manual
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-blue-300 text-blue-900 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-100 dark:hover:bg-blue-900/40"
+                  onClick={handleAiRefresh}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? 'Running…' : 'Refresh'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {aiError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2 dark:bg-red-500/10 dark:border-red-500/60 dark:text-red-100">
+                  {aiError}
+                </div>
+              )}
+              <div
+                className={`min-h-[64px] max-h-48 overflow-y-auto text-sm whitespace-pre-wrap break-words leading-relaxed rounded-md px-3 py-2 border ${
+                  aiLoading
+                    ? 'border-blue-50 bg-blue-50 animate-pulse text-gray-800 dark:border-blue-900/30 dark:bg-blue-900/30 dark:text-blue-100'
+                    : 'border-blue-200 bg-white text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                }`}
+              >
+                {aiMessage}
+              </div>
+              {aiUpdatedAt && (
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  Updated: {new Date(aiUpdatedAt).toLocaleString()}
+                </div>
+              )}
+              {!aiUpdatedAt && !aiLoading && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">Refresh to get the latest feed.</div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <KPICard
-          title="Job Status"
-          value={metrics.totalJobs}
-          icon={CircleCheck}
-          description={`Success: ${metrics.successJobs} | Failed: ${metrics.failedJobs} | Running: ${metrics.runningJobs}`}
-          iconColor="text-blue-600"
-          onClick={() => scrollToJobs('all')}
-        />
-        <KPICard
-          title="Overrunning Jobs"
-          value={metrics.overrunningJobs}
-          icon={Clock}
-          description="Jobs exceeding 1.5x avg runtime"
-          iconColor="text-orange-600"
-          onClick={() => scrollToJobs('overrunning')}
-        />
-        <KPICard
-          title="Active Incidents"
-          value={incidentsForView.length}
-          icon={TriangleAlert}
-          description={incidentStatusSummary}
-          iconColor="text-red-600"
-          onClick={() => scrollToJobs('incidents')}
-        />
-      </div>
+      {/* Validation + Critical Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
+        <div className="h-full space-y-4">
+          {domain === 'AdTech' && (
+            <Card className="bg-white border border-slate-200 shadow-sm dark:bg-[#111827] dark:border-slate-700 min-h-[520px]">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span className="text-gray-900 dark:text-slate-100">Validation Status</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    onClick={() => loadValidationStatus(true)}
+                    disabled={isValidationLoading}
+                  >
+                    {isValidationLoading ? 'Refreshing…' : 'Refresh'}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {validationError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2 dark:bg-red-500/10 dark:border-red-500/60 dark:text-red-100">
+                    {validationError}
+                  </div>
+                )}
+                {!validationError && !validationRows.length && !isValidationLoading && (
+                  <div className="text-sm text-gray-500 dark:text-gray-400">No validation reports for this date.</div>
+                )}
+                <div className="max-h-[420px] overflow-y-auto space-y-3">
+                  {validationRows.map((row) => {
+                    const statusLabel =
+                      row.validation_status === true
+                        ? 'OK'
+                        : row.validation_status === false
+                          ? 'Variance'
+                          : 'Waiting';
+                    const statusClass =
+                      row.validation_status === true
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : row.validation_status === false
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-100 text-slate-700';
+                    const slaLabel =
+                      row.val_sla_met === true
+                        ? 'SLA met'
+                        : row.val_sla_met === false
+                          ? 'SLA miss'
+                          : 'SLA n/a';
+                    const slaClass =
+                      row.val_sla_met === true
+                        ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                        : row.val_sla_met === false
+                          ? 'border-rose-200 text-rose-700 bg-rose-50'
+                          : 'border-slate-200 text-slate-600 bg-slate-50';
+                    const metrics = parseValidationMetrics(row.metrics_json);
+                    const kpis = parseValidationKpis(row.kpis_json);
+                    const varianceSummary = metrics
+                      .slice(0, 2)
+                      .map((m) => `${m.key} ${Math.abs(m.variancePct).toFixed(2)}%`)
+                      .join(' | ');
+                    const startTime = formatValidationTime(row.validation_start_time_utc);
+                    const endTime = formatValidationTime(row.validation_end_time_utc);
+                    const duration = formatDurationShort(row.duration_secs);
 
-      {/* Chart and Critical Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <PlatformChart data={platformMetrics} />
+                    return (
+                      <div
+                        key={`${row.validation_id}-${row.facet_value ?? 'null'}-${row.reporting_date_utc}`}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                              {row.validation_report || row.validation_id}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {(row.datasource_name || 'Unknown datasource')}{row.subdomain_name ? ` · ${row.subdomain_name}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${slaClass}`}>
+                              {slaLabel}
+                            </span>
+                          </div>
+                        </div>
+                        {row.validation_status_text && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">{row.validation_status_text}</div>
+                        )}
+                        {row.validation_message && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">{row.validation_message}</div>
+                        )}
+                        {varianceSummary && row.validation_status === false && (
+                          <div className="mt-1 text-xs text-rose-700 dark:text-rose-300">Variance: {varianceSummary}</div>
+                        )}
+                        {!varianceSummary && kpis.length > 0 && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">KPIs: {kpis.slice(0, 4).join(', ')}</div>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                          {startTime && endTime && (
+                            <span>Run {startTime} - {endTime}</span>
+                          )}
+                          {duration && <span>Duration {duration}</span>}
+                          {row.sla_cutoff_time_utc && <span>SLA {row.sla_cutoff_time_utc}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {validationUpdatedAt && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Updated: {new Date(validationUpdatedAt).toLocaleString()}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
-        <div>
+        <div className="space-y-4 h-full">
           <CriticalInfoBox
             bulletins={bulletins}
             onSave={onSaveBulletin}
@@ -849,7 +1372,7 @@ export function DashboardPage({
       {/* Jobs & Incidents Section */}
       <div ref={jobsSectionRef}>
         <Tabs value={jobTab} onValueChange={(val) => setJobTab(val as typeof jobTab)}>
-          <TabsList className="mb-4">
+          <TabsList className="mb-4 bg-muted text-muted-foreground w-fit items-center justify-center rounded-xl p-[3px] flex flex-wrap h-auto dark:bg-slate-800 dark:text-slate-200">
             <TabsTrigger value="all">All Jobs</TabsTrigger>
             <TabsTrigger value="overrunning">Overrunning</TabsTrigger>
             <TabsTrigger value="incidents">Incidents</TabsTrigger>
@@ -870,11 +1393,11 @@ export function DashboardPage({
           </TabsContent>
 
           <TabsContent value="incidents" className="mt-0">
-            <div className="rounded-lg border bg-white">
-              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap">
+            <div className="rounded-lg border bg-white dark:bg-[#111827] dark:border-slate-700">
+              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap dark:border-slate-700">
                 <div>
                   <h3 className="text-lg font-semibold">Incidents</h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     Synced from JIRA · Active: {incidentsForView.length} · Archived: {archivedIncidentsForView.length}
                   </p>
                 </div>
@@ -889,7 +1412,7 @@ export function DashboardPage({
               </div>
               <div className="p-4 pt-3">
                 <Tabs value={incidentView} onValueChange={(val) => setIncidentView(val as typeof incidentView)} className="space-y-4">
-                  <TabsList>
+                  <TabsList className="bg-muted text-muted-foreground w-fit items-center justify-center rounded-xl p-[3px] flex flex-wrap h-auto dark:bg-slate-800 dark:text-slate-200">
                     <TabsTrigger value="active">Active ({incidentsForView.length})</TabsTrigger>
                     <TabsTrigger value="archived">Archived ({archivedIncidentsForView.length})</TabsTrigger>
                   </TabsList>
@@ -953,7 +1476,7 @@ export function DashboardPage({
                             </TableHead>
                             <TableHead><SortLabel label="Created" sortKey="created" mode="active" /></TableHead>
                             <TableHead><SortLabel label="Updated" sortKey="updated" mode="active" /></TableHead>
-                            <TableHead className="w-72">Last Comment</TableHead>
+                            <TableHead className="w-[520px]">Last Comment</TableHead>
                             <TableHead className="w-28 text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -978,21 +1501,23 @@ export function DashboardPage({
                                     {incident.key}
                                   </a>
                                 </TableCell>
-                                <TableCell className="max-w-md">{incident.title}</TableCell>
+                                <TableCell className="max-w-md break-words whitespace-normal !whitespace-pre-wrap">{incident.title}</TableCell>
                                 <TableCell>{incident.issueType}</TableCell>
                                 <TableCell>
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadgeClass(incident.status)}`}>
                                     {incident.status}
                                   </span>
                                 </TableCell>
-                                <TableCell>{incident.assignee || '-'}</TableCell>
-                                <TableCell>{incident.reporter || '-'}</TableCell>
-                                <TableCell>{incident.created ? new Date(incident.created).toLocaleString() : '-'}</TableCell>
-                                <TableCell>{incident.updated ? new Date(incident.updated).toLocaleString() : '-'}</TableCell>
-                                <TableCell className="whitespace-pre-wrap break-words max-w-xl">
-                                  {incident.lastComment?.body
-                                    ? `${incident.lastComment.author ? incident.lastComment.author + ': ' : ''}${incident.lastComment.body}`
-                                    : '-'}
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.assignee || '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.reporter || '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.created ? new Date(incident.created).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.updated ? new Date(incident.updated).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="whitespace-pre-wrap break-words max-w-4xl">
+                                  <div className="max-h-32 overflow-y-auto pr-1">
+                                    {incident.lastComment?.body
+                                      ? `${incident.lastComment.author ? incident.lastComment.author + ': ' : ''}${incident.lastComment.body}`
+                                      : '-'}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <Button
@@ -1013,11 +1538,11 @@ export function DashboardPage({
                       </Table>
                     </div>
                     {incidentsForView.length > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap dark:text-slate-300">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-700">Rows per page</span>
+                          <span className="text-gray-700 dark:text-slate-200">Rows per page</span>
                           <select
-                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-blue-400"
                             value={activePageSize}
                             onChange={(e) => {
                               setActivePageSize(Number(e.target.value));
@@ -1030,7 +1555,7 @@ export function DashboardPage({
                           </select>
                         </div>
                         <div className="flex items-center gap-4">
-                          <span>
+                          <span className="dark:text-slate-200">
                             Showing {activePageItems.length} of {incidentsForView.length} incidents
                           </span>
                           <div className="flex items-center gap-2">
@@ -1132,14 +1657,14 @@ export function DashboardPage({
                                     {incident.key}
                                   </a>
                                 </TableCell>
-                                <TableCell className="max-w-lg">{incident.title}</TableCell>
+                                <TableCell className="max-w-lg break-words whitespace-normal !whitespace-pre-wrap">{incident.title}</TableCell>
                                 <TableCell>
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusBadgeClass(incident.status)}`}>
                                     {incident.status}
                                   </span>
                                 </TableCell>
-                                <TableCell>{incident.archivedAt ? new Date(incident.archivedAt).toLocaleString() : '-'}</TableCell>
-                                <TableCell>{incident.archivedBy || 'Dashboard'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.archivedAt ? new Date(incident.archivedAt).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="break-words whitespace-normal !whitespace-pre-wrap">{incident.archivedBy || 'Dashboard'}</TableCell>
                                 <TableCell className="text-right space-x-2">
                                   <Button
                                     variant="outline"
@@ -1165,11 +1690,11 @@ export function DashboardPage({
                       </Table>
                     </div>
                     {archivedIncidentsForView.length > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap">
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-gray-600 flex-wrap dark:text-slate-300">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-700">Rows per page</span>
+                          <span className="text-gray-700 dark:text-slate-200">Rows per page</span>
                           <select
-                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-blue-400"
                             value={archivedPageSize}
                             onChange={(e) => {
                               setArchivedPageSize(Number(e.target.value));
@@ -1182,7 +1707,7 @@ export function DashboardPage({
                           </select>
                         </div>
                         <div className="flex items-center gap-4">
-                          <span>
+                          <span className="dark:text-slate-200">
                             Showing {archivedPageItems.length} of {archivedIncidentsForView.length} incidents
                           </span>
                           <div className="flex items-center gap-2">
@@ -1215,6 +1740,14 @@ export function DashboardPage({
             </div>
           </TabsContent>
         </Tabs>
+      </div>
+
+      {/* Job Status by Platform (end of page) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
+        <div className="h-full">
+          <PlatformChart data={platformMetrics} />
+        </div>
+        <div />
       </div>
 
       {/* Delete / Archive Confirmation */}

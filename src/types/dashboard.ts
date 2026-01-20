@@ -9,7 +9,7 @@ export interface JobData {
   parent_pipeline: string;
   medallion_layer: string | null;
   table_type: string | null;
-  job_status: 'SUCCESS' | 'FAILED' | 'RUNNING' | 'PENDING' | 'QUEUED' | 'UNKNOWN';
+  job_status: 'SUCCESS' | 'FAILED' | 'RUNNING' | 'PENDING' | 'QUEUED' | 'SKIPPED' | 'UPSTREAM_FAILED' | 'UNKNOWN';
   job_start_time_utc: string;
   job_end_time_utc: string;
   duration_secs: number | null;
@@ -32,6 +32,8 @@ export interface DashboardMetrics {
   runningJobs: number;
   pendingJobs: number;
   queuedJobs: number;
+  skippedJobs: number;
+  upstreamFailedJobs: number;
   unknownJobs: number;
   overrunningJobs: number;
   incidents: number;
@@ -44,6 +46,8 @@ export interface PlatformMetrics {
   running: number;
   pending: number;
   queued: number;
+  skipped: number;
+  upstreamFailed: number;
   unknown: number;
 }
 
@@ -96,4 +100,31 @@ export interface DomainIncidentHistoryPoint {
   domain: string;
   status: string;
   count: number;
+}
+
+export interface ValidationStatusRecord {
+  validation_id: string;
+  validation_report: string | null;
+  validation_type: string | null;
+  datasource_name: string | null;
+  domain_name: string | null;
+  subdomain_name: string | null;
+  facet_key: string | null;
+  facet_value: string | null;
+  validation_status: boolean | null;
+  validation_status_text: string | null;
+  validation_data_date: string | null;
+  validation_start_time_utc: string | null;
+  validation_end_time_utc: string | null;
+  duration_secs: number | null;
+  contributing_job_names: string[] | null;
+  contributing_run_ids: string[] | null;
+  kpis_json: string | null;
+  metrics_json: string | null;
+  sla_cutoff_time_utc: string | null;
+  etl_created_timestamp_utc: string | null;
+  etl_updated_timestamp_utc: string | null;
+  val_sla_met: boolean | null;
+  validation_message: string | null;
+  reporting_date_utc: string | null;
 }

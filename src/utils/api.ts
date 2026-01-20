@@ -1,6 +1,7 @@
 // API utilities for backend communication
+import type { ValidationStatusRecord } from '../types/dashboard';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
 
 export interface FetchJobsParams {
   selectedDate: string;
@@ -24,6 +25,53 @@ export interface IncidentHistoryPoint {
   domain: string;
   status: string;
   count: number;
+}
+
+export interface AiIncidentLite {
+  key: string;
+  title: string;
+  status: string | null;
+  archived: boolean;
+}
+
+export interface AiJobLite {
+  name: string;
+  status: string;
+  platform: string;
+  datasource: string | null;
+  pacingPct?: number | null;
+  startTime?: string | null; // HH:mm
+}
+
+export interface AiDomainSummary {
+  name: string;
+  totalJobs: number;
+  failed: number;
+  pending: number;
+  running: number;
+  queued: number;
+  overrunning: number;
+  incidents: number;
+  topIncidents?: AiIncidentLite[];
+  topJobs?: AiJobLite[];
+  validationReports?: {
+    report: string;
+    datasource: string | null;
+    subdomain: string | null;
+    status: 'OK' | 'Variance' | 'Waiting';
+    slaMet: boolean | null;
+    varianceSummary?: string | null;
+    statusText?: string | null;
+    slaCutoff?: string | null;
+  }[];
+  anomaly: boolean;
+  sinceTime?: string | null;
+}
+
+export interface AiSummaryResponse {
+  success: boolean;
+  message: string;
+  updatedAt: string;
 }
 
 export async function fetchJobs(params: FetchJobsParams) {
@@ -51,6 +99,35 @@ export async function fetchHistory(selectedDate: string) {
     throw new Error(error.error || 'Failed to fetch history');
   }
   return response.json() as Promise<{ success: boolean; history: HistoryPoint[]; incidents: IncidentHistoryPoint[] }>;
+}
+
+export async function fetchValidationStatus(params: { selectedDate: string; domain?: string; refresh?: boolean }) {
+  const query = new URLSearchParams({ selectedDate: params.selectedDate });
+  if (params.domain) {
+    query.set('domain', params.domain);
+  }
+  if (params.refresh) {
+    query.set('refresh', 'true');
+  }
+  const response = await fetch(`${API_BASE_URL}/api/validation-status?${query.toString()}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to fetch validation status');
+  }
+  return response.json() as Promise<{ success: boolean; data: ValidationStatusRecord[]; count: number; cached?: boolean }>;
+}
+
+export async function fetchAiSummary(domains: AiDomainSummary[], selectedDate: string) {
+  const response = await fetch(`${API_BASE_URL}/api/ai/ops-summary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domains, selectedDate }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to fetch AI summary');
+  }
+  return response.json() as Promise<AiSummaryResponse>;
 }
 
 export async function fetchIncidents(refresh = false) {

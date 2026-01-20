@@ -1,6 +1,42 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Base color tokens (light) */
+:root {
+  --bg: #f8fafc;
+  --fg: #0f172a;
+  --card: #ffffff;
+  --card-fg: #0f172a;
+  --border: #e5e7eb;
+  --muted: #f1f5f9;
+  --muted-fg: #475569;
+}
+
+/* Dark indigo/gray palette */
+.dark {
+  --bg: #0f172a;
+  --fg: #e2e8f0;
+  --card: #111827;
+  --card-fg: #e2e8f0;
+  --border: #1f2937;
+  --muted: #1f2937;
+  --muted-fg: #cbd5e1;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+@custom-variant dark (&:is(.dark *));
+
+:root {
   --font-size: 16px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
