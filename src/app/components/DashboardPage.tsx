@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS, DomainHistoryPoint, DomainIncidentHistoryPoint } from '../../types/dashboard';
+import { JobData, DashboardMetrics, PlatformMetrics, Bulletin, Incident, DOMAINS, DomainHistoryPoint, DomainIncidentHistoryPoint, ValidationStatusRecord } from '../../types/dashboard';
 import { KPICard } from './KPICard';
 import { PlatformChart } from './PlatformChart';
 import { CriticalInfoBox } from './CriticalInfoBox';
@@ -26,7 +26,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { fetchAiSummary, AiDomainSummary } from '../../utils/api';
+import { fetchAiSummary, AiDomainSummary, fetchValidationStatus } from '../../utils/api';
 
 const JIRA_HOST = (import.meta as any).env?.VITE_JIRA_HOST || 'teamfox.atlassian.net';
 
@@ -56,6 +56,61 @@ const INCIDENT_COLORS: Record<string, string> = {
   'Closed': '#10b981',
   'Unknown': '#94a3b8',
 };
+
+type ValidationMetric = {
+  key: string;
+  variancePct: number;
+  sourceValue?: number | null;
+  targetValue?: number | null;
+};
+
+function parseValidationMetrics(metricsJson: string | null): ValidationMetric[] {
+  if (!metricsJson) return [];
+  try {
+    const parsed = JSON.parse(metricsJson);
+    if (!parsed || typeof parsed !== 'object') return [];
+    return Object.entries(parsed)
+      .map(([key, value]) => {
+        const record = value as { variance_percent?: number; source_value?: number; target_value?: number };
+        return {
+          key,
+          variancePct: typeof record.variance_percent === 'number' ? record.variance_percent : 0,
+          sourceValue: typeof record.source_value === 'number' ? record.source_value : null,
+          targetValue: typeof record.target_value === 'number' ? record.target_value : null,
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.variancePct))
+      .sort((a, b) => Math.abs(b.variancePct) - Math.abs(a.variancePct));
+  } catch (error) {
+    return [];
+  }
+}
+
+function parseValidationKpis(kpisJson: string | null): string[] {
+  if (!kpisJson) return [];
+  try {
+    const parsed = JSON.parse(kpisJson);
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === 'string') : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function formatValidationTime(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return format(date, 'HH:mm');
+}
+
+function formatDurationShort(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds)) return null;
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
 
 type TrendPoint = { date: string; healthPct: number | null; failureRate: number };
 
@@ -360,6 +415,10 @@ export function DashboardPage({
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [reporterFilter, setReporterFilter] = useState('all');
+  const [validationRows, setValidationRows] = useState<ValidationStatusRecord[]>([]);
+  const [isValidationLoading, setIsValidationLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationUpdatedAt, setValidationUpdatedAt] = useState<string | null>(null);
 
   const activeIncidents = useMemo(
     () => incidents.filter((incident) => !incident.archivedAt),
@@ -514,6 +573,38 @@ export function DashboardPage({
 
     return orderedStatuses.map((status) => `${status}: ${counts[status]}`).join(' | ');
   }, [incidentsForView]);
+
+  const loadValidationStatus = async (forceRefresh = false) => {
+    if (domain !== 'AdTech') return;
+    setIsValidationLoading(true);
+    setValidationError(null);
+    try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const response = await fetchValidationStatus({
+        selectedDate: dateStr,
+        domain,
+        refresh: forceRefresh,
+      });
+      setValidationRows(response.data || []);
+      setValidationUpdatedAt(new Date().toISOString());
+    } catch (error: any) {
+      console.error('Error loading validation status:', error);
+      setValidationRows([]);
+      setValidationError(error?.message || 'Failed to load validation status');
+    } finally {
+      setIsValidationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (domain !== 'AdTech') {
+      setValidationRows([]);
+      setValidationError(null);
+      setValidationUpdatedAt(null);
+      return;
+    }
+    loadValidationStatus();
+  }, [domain, selectedDate]);
 
   const isOverrunning = (job: JobData) => {
     const effectiveDuration = getEffectiveDurationSecs(job);
@@ -943,6 +1034,42 @@ export function DashboardPage({
         .slice(0, 5)
         .map(({ score, ...rest }) => rest);
 
+      const validationSummary =
+        d === 'AdTech' && validationRows.length
+          ? validationRows
+              .map((row) => {
+                const status =
+                  row.validation_status === true
+                    ? 'OK'
+                    : row.validation_status === false
+                      ? 'Variance'
+                      : 'Waiting';
+                const metrics = parseValidationMetrics(row.metrics_json);
+                const varianceSummary = metrics.length
+                  ? metrics
+                      .slice(0, 2)
+                      .map((m) => `${m.key} ${Math.abs(m.variancePct).toFixed(2)}%`)
+                      .join(' | ')
+                  : null;
+                return {
+                  report: row.validation_report || row.validation_id,
+                  datasource: row.datasource_name || null,
+                  subdomain: row.subdomain_name || null,
+                  status,
+                  slaMet: row.val_sla_met ?? null,
+                  varianceSummary,
+                  statusText: row.validation_status_text || row.validation_message || null,
+                  slaCutoff: row.sla_cutoff_time_utc || null,
+                };
+              })
+              .sort((a, b) => {
+                const aScore = (a.status === 'Variance' ? 2 : a.status === 'Waiting' ? 1 : 0) + (a.slaMet === false ? 1 : 0);
+                const bScore = (b.status === 'Variance' ? 2 : b.status === 'Waiting' ? 1 : 0) + (b.slaMet === false ? 1 : 0);
+                return bScore - aScore;
+              })
+              .slice(0, 6)
+          : undefined;
+
       const entry: AiDomainSummary = {
         name: d,
         totalJobs,
@@ -961,6 +1088,7 @@ export function DashboardPage({
             archived: Boolean(inc.archivedAt),
           })),
         topJobs: scoredJobs,
+        validationReports: validationSummary,
         anomaly,
         sinceTime: earliestIssueStart ? format(new Date(earliestIssueStart), 'HH:mm') : null,
       };
@@ -1113,10 +1241,121 @@ export function DashboardPage({
         </div>
       </div>
 
-      {/* Platform Chart + AI Agent */}
+      {/* Validation + Critical Info */}
       <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
-        <div className="h-full">
-          <PlatformChart data={platformMetrics} />
+        <div className="h-full space-y-4">
+          {domain === 'AdTech' && (
+            <Card className="bg-white border border-slate-200 shadow-sm dark:bg-[#111827] dark:border-slate-700 min-h-[520px]">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span className="text-gray-900 dark:text-slate-100">Validation Status</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    onClick={() => loadValidationStatus(true)}
+                    disabled={isValidationLoading}
+                  >
+                    {isValidationLoading ? 'Refreshing…' : 'Refresh'}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {validationError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2 dark:bg-red-500/10 dark:border-red-500/60 dark:text-red-100">
+                    {validationError}
+                  </div>
+                )}
+                {!validationError && !validationRows.length && !isValidationLoading && (
+                  <div className="text-sm text-gray-500 dark:text-gray-400">No validation reports for this date.</div>
+                )}
+                <div className="max-h-[420px] overflow-y-auto space-y-3">
+                  {validationRows.map((row) => {
+                    const statusLabel =
+                      row.validation_status === true
+                        ? 'OK'
+                        : row.validation_status === false
+                          ? 'Variance'
+                          : 'Waiting';
+                    const statusClass =
+                      row.validation_status === true
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : row.validation_status === false
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-100 text-slate-700';
+                    const slaLabel =
+                      row.val_sla_met === true
+                        ? 'SLA met'
+                        : row.val_sla_met === false
+                          ? 'SLA miss'
+                          : 'SLA n/a';
+                    const slaClass =
+                      row.val_sla_met === true
+                        ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                        : row.val_sla_met === false
+                          ? 'border-rose-200 text-rose-700 bg-rose-50'
+                          : 'border-slate-200 text-slate-600 bg-slate-50';
+                    const metrics = parseValidationMetrics(row.metrics_json);
+                    const kpis = parseValidationKpis(row.kpis_json);
+                    const varianceSummary = metrics
+                      .slice(0, 2)
+                      .map((m) => `${m.key} ${Math.abs(m.variancePct).toFixed(2)}%`)
+                      .join(' | ');
+                    const startTime = formatValidationTime(row.validation_start_time_utc);
+                    const endTime = formatValidationTime(row.validation_end_time_utc);
+                    const duration = formatDurationShort(row.duration_secs);
+
+                    return (
+                      <div key={row.validation_id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                              {row.validation_report || row.validation_id}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {(row.datasource_name || 'Unknown datasource')}{row.subdomain_name ? ` · ${row.subdomain_name}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${slaClass}`}>
+                              {slaLabel}
+                            </span>
+                          </div>
+                        </div>
+                        {row.validation_status_text && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">{row.validation_status_text}</div>
+                        )}
+                        {row.validation_message && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">{row.validation_message}</div>
+                        )}
+                        {varianceSummary && row.validation_status === false && (
+                          <div className="mt-1 text-xs text-rose-700 dark:text-rose-300">Variance: {varianceSummary}</div>
+                        )}
+                        {!varianceSummary && kpis.length > 0 && (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">KPIs: {kpis.slice(0, 4).join(', ')}</div>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                          {startTime && endTime && (
+                            <span>Run {startTime} - {endTime}</span>
+                          )}
+                          {duration && <span>Duration {duration}</span>}
+                          {row.sla_cutoff_time_utc && <span>SLA {row.sla_cutoff_time_utc}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {validationUpdatedAt && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Updated: {new Date(validationUpdatedAt).toLocaleString()}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
         <div className="space-y-4 h-full">
           <CriticalInfoBox
@@ -1498,6 +1737,14 @@ export function DashboardPage({
             </div>
           </TabsContent>
         </Tabs>
+      </div>
+
+      {/* Job Status by Platform (end of page) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[70%_30%] gap-4 items-stretch">
+        <div className="h-full">
+          <PlatformChart data={platformMetrics} />
+        </div>
+        <div />
       </div>
 
       {/* Delete / Archive Confirmation */}

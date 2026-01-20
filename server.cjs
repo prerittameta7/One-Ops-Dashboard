@@ -54,9 +54,11 @@ const ALLOWED_DOMAINS = [
 // Simple in-memory cache for job queries (per date + domain)
 // Structure: { key: { data, timestamp } }
 const jobCache = new Map();
+const validationCache = new Map();
 const CACHE_MAX_ENTRIES = 20; // keep last 20 queries
 // Track in-flight queries to avoid duplicate DB hits when requests arrive simultaneously
 const inFlightQueries = new Map();
+const inFlightValidation = new Map();
 
 // Helper function to execute Databricks SQL queries
 async function executeDatabricksQuery(query) {
@@ -94,6 +96,14 @@ function setCache(key, data) {
   if (jobCache.size > CACHE_MAX_ENTRIES) {
     const oldestKey = [...jobCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
     jobCache.delete(oldestKey);
+  }
+}
+
+function setValidationCache(key, data) {
+  validationCache.set(key, { data, timestamp: Date.now() });
+  if (validationCache.size > CACHE_MAX_ENTRIES) {
+    const oldestKey = [...validationCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
+    validationCache.delete(oldestKey);
   }
 }
 
@@ -335,6 +345,113 @@ app.post('/api/dashboard/jobs', async (req, res) => {
     res.status(500).json({ 
       error: error.message || 'Failed to fetch dashboard data',
       details: error.toString()
+    });
+  }
+});
+
+// API Endpoint: Validation status (per reporting date + domain)
+app.get('/api/validation-status', async (req, res) => {
+  try {
+    const selectedDate = req.query.selectedDate;
+    const domain = req.query.domain;
+    const refresh = req.query.refresh === 'true';
+
+    if (!selectedDate) {
+      return res.status(400).json({ error: 'selectedDate is required (yyyy-MM-dd)' });
+    }
+
+    const cacheKey = makeCacheKey(selectedDate, domain);
+    if (!refresh && validationCache.has(cacheKey)) {
+      const cached = validationCache.get(cacheKey);
+      return res.json({
+        success: true,
+        data: cached.data,
+        count: cached.data.length,
+        cached: true
+      });
+    }
+
+    if (!refresh && inFlightValidation.has(cacheKey)) {
+      const data = await inFlightValidation.get(cacheKey);
+      return res.json({
+        success: true,
+        data,
+        count: data.length,
+        cached: true
+      });
+    }
+
+    const fetchPromise = (async () => {
+      let query = `
+        SELECT
+          validation_id,
+          validation_report,
+          validation_type,
+          datasource_name,
+          domain_name,
+          subdomain_name,
+          facet_key,
+          facet_value,
+          validation_status,
+          validation_status_text,
+          validation_data_date,
+          validation_start_time_utc,
+          validation_end_time_utc,
+          duration_secs,
+          contributing_job_names,
+          contributing_run_ids,
+          kpis_json,
+          metrics_json,
+          sla_cutoff_time_utc,
+          etl_created_timestamp_utc,
+          etl_updated_timestamp_utc,
+          val_sla_met,
+          validation_message,
+          reporting_date_utc
+        FROM fox_bi_dev.dataops_dashboard.ads_validation_status_check
+        WHERE reporting_date_utc = '${selectedDate}'
+      `;
+
+      if (domain && domain !== 'all') {
+        query += ` AND LOWER(domain_name) = LOWER('${domain}')`;
+      }
+
+      query += `
+        ORDER BY
+          CASE
+            WHEN validation_status = false THEN 0
+            WHEN validation_status IS NULL THEN 1
+            ELSE 2
+          END,
+          CASE
+            WHEN val_sla_met = false THEN 0
+            WHEN val_sla_met IS NULL THEN 1
+            ELSE 2
+          END,
+          validation_end_time_utc DESC
+      `;
+
+      const result = await executeDatabricksQuery(query);
+      setValidationCache(cacheKey, result);
+      return result;
+    })();
+
+    if (!refresh) {
+      inFlightValidation.set(cacheKey, fetchPromise);
+    }
+
+    const result = await fetchPromise;
+    inFlightValidation.delete(cacheKey);
+
+    res.json({
+      success: true,
+      data: result,
+      count: result.length
+    });
+  } catch (error) {
+    console.error('Error fetching validation status:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to fetch validation status'
     });
   }
 });
@@ -686,12 +803,13 @@ You are an AI Data Ops assistant. Output 2–3 bullets, each <=200 chars.
 - All-clear: ONE short friendly line; one light emoji allowed there.
 - Format: [severity] domain/platform/datasource [ time (prefer HH:mm if provided; skip date if time not meaningful) ]: what happened.
 - Incidents: Mention incidents ONLY if they are clearly related by title/keywords to hot jobs/platforms/datasources. Use status and archived flags to judge relevance. Use topJobs (status/platform/pacing/start) to ground the issue facts.
+- Validation (AdTech only): If validationReports are provided, mention SLA miss or variance only when notable. Keep it brief and tie to datasource/subdomain.
 - Avoid IDs/secrets.
 
 Selected date: ${selectedDate || 'unknown'}
 
 Domains (candidates):
-${domains.map(d => `- ${d.name}: total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}${d.sinceTime ? `, since=${d.sinceTime}` : ''}${d.topIncidents?.length ? `, topIncidents=${d.topIncidents.map(t => `${t.key}:${t.title}(status:${t.status || '-'},archived:${t.archived ? 'yes' : 'no'})`).join(' | ')}` : ''}${d.topJobs?.length ? `, topJobs=${d.topJobs.map(t => `${t.name}(status:${t.status},plat:${t.platform},pace:${t.pacingPct ? t.pacingPct.toFixed(0)+'%' : 'n/a'},start:${t.startTime || 'n/a'})`).join(' | ')}` : ''}`).join('\n')}
+${domains.map(d => `- ${d.name}: total=${d.totalJobs}, failed=${d.failed}, pending=${d.pending}, running=${d.running}, queued=${d.queued}, overruns=${d.overrunning}, incidents=${d.incidents}, anomaly=${d.anomaly ? 'yes' : 'no'}${d.sinceTime ? `, since=${d.sinceTime}` : ''}${d.topIncidents?.length ? `, topIncidents=${d.topIncidents.map(t => `${t.key}:${t.title}(status:${t.status || '-'},archived:${t.archived ? 'yes' : 'no'})`).join(' | ')}` : ''}${d.topJobs?.length ? `, topJobs=${d.topJobs.map(t => `${t.name}(status:${t.status},plat:${t.platform},pace:${t.pacingPct ? t.pacingPct.toFixed(0)+'%' : 'n/a'},start:${t.startTime || 'n/a'})`).join(' | ')}` : ''}${d.validationReports?.length ? `, validationReports=${d.validationReports.map(v => `${v.report}(status:${v.status},sla:${v.slaMet === null ? 'n/a' : v.slaMet ? 'met' : 'miss'}${v.datasource ? `,src:${v.datasource}` : ''}${v.subdomain ? `,sub:${v.subdomain}` : ''}${v.varianceSummary ? `,var:${v.varianceSummary}` : ''}${v.slaCutoff ? `,slaCutoff:${v.slaCutoff}` : ''})`).join(' | ')}` : ''}`).join('\n')}
     `.trim();
 
     const payload = {
